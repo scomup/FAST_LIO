@@ -119,16 +119,15 @@ KD_TREE<PointType> ikdtree;
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
-V3D euler_cur;
 V3D position_last(Zero3d);
 V3D Lidar_T_wrt_IMU(Zero3d);
 M3D Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
 MeasureGroup Measures;
-esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
+esekfom::esekf kf;
 state_ikfom state_point;
-vect3 pos_lid;
+Eigen::Vector3d pos_lid;
 
 nav_msgs::Path path;
 nav_msgs::Odometry odomAftMapped;
@@ -582,7 +581,7 @@ void publish_path(const ros::Publisher pubPath)
     }
 }
 
-void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
+void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct &ekfom_data)
 {
     double match_start = omp_get_wtime();
     laserCloudOri->clear(); 
@@ -770,7 +769,6 @@ int main(int argc, char** argv)
 
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
-    kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
     FILE *fp;
@@ -879,9 +877,6 @@ int main(int argc, char** argv)
             normvec->resize(feats_down_size);
             feats_down_world->resize(feats_down_size);
 
-            V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
-            fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
-            <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
             pointSearchInd_surf.resize(feats_down_size);
             Nearest_Points.resize(feats_down_size);
@@ -893,9 +888,10 @@ int main(int argc, char** argv)
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+            //kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, feats_down_body, ikdtree, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en);
+
             state_point = kf.get_x();
-            euler_cur = SO3ToEuler(state_point.rot);
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
             geoQuat.x = state_point.rot.coeffs()[0];
             geoQuat.y = state_point.rot.coeffs()[1];
