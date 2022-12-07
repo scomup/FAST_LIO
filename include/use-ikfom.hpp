@@ -2,7 +2,7 @@
 #define USE_IKFOM_H
 
 
-#include "so3_math.h"
+#include "so3_math.hpp"
 
 
 //#include "sophus/so3.h"
@@ -68,7 +68,7 @@ Eigen::Matrix<double, 24, 24> df_dx(state_ikfom s, input_ikfom in)
 	cov.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();	//对应公式(7)第2行第3列   I
 	Eigen::Vector3d acc_ = in.acc - s.ba;   	//测量加速度 = a_m - bias	
 
-	cov.block<3, 3>(12, 3) = -s.rot.matrix() * skew_sym_mat(acc_);		//对应公式(7)第3行第1列
+	cov.block<3, 3>(12, 3) = -s.rot.matrix() * skewSymMat(acc_);		//对应公式(7)第3行第1列
 	cov.block<3, 3>(12, 18) = -s.rot.matrix(); 				//对应公式(7)第3行第5列 
 
 	cov.template block<3, 3>(12, 21) = Eigen::Matrix3d::Identity();		//对应公式(7)第3行第6列   I

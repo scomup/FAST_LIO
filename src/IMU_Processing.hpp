@@ -6,7 +6,6 @@
 #include <fstream>
 #include <csignal>
 #include <ros/ros.h>
-#include <so3_math.h>
 #include <Eigen/Eigen>
 #include <common_lib.h>
 #include <pcl/common/io.h>
@@ -194,7 +193,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   state_ikfom init_state = kf_state.get_x();
   init_state.grav = - mean_acc / mean_acc.norm() * G_m_s2;
   
-  //state_inout.rot = Eye3d; // Exp(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
+  //state_inout.rot = Eye3d; // SO3Expmap(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
   init_state.bg  = mean_gyr;
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;
   init_state.offset_R_L_I = Eigen::Quaterniond(Lidar_R_wrt_IMU);
@@ -319,7 +318,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf &kf_state
        * Note: Compensation direction is INVERSE of Frame's moving direction
        * So if we want to compensate a point at timestamp-i to the frame-e
        * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
-      M3D R_i(R_imu * Exp(angvel_avr, dt));
+      M3D R_i(R_imu * SO3Expmap(angvel_avr, dt));
       
       V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
       V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);

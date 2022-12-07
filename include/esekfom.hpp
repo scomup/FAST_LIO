@@ -70,9 +70,9 @@ namespace esekfom
 			state_ikfom x_r;
 			x_r.pos = x.pos + f_.block<3, 1>(0, 0);
 			Eigen::Vector3d th_so3 = f_.block<3, 1>(3, 0);
-			x_r.rot = x.rot * Eigen::Quaterniond( SO3Math::Exp (th_so3) );
+			x_r.rot = x.rot * Eigen::Quaterniond( SO3Expmap (th_so3) );
 			Eigen::Vector3d R_L_I_so3 = f_.block<3, 1>(6, 0);
-			x_r.offset_R_L_I = x.offset_R_L_I * Eigen::Quaterniond(SO3Math::Exp(R_L_I_so3));
+			x_r.offset_R_L_I = x.offset_R_L_I * Eigen::Quaterniond(SO3Expmap(R_L_I_so3));
 
 			x_r.offset_T_L_I = x.offset_T_L_I + f_.block<3, 1>(9, 0);
 			x_r.vel = x.vel + f_.block<3, 1>(12, 0);
@@ -212,8 +212,8 @@ namespace esekfom
 
 			x_r.block<3, 1>(0, 0) = x1.pos - x2.pos;
 
-			x_r.block<3, 1>(3, 0) = SO3Math::Log( x2.rot.matrix().transpose() * x1.rot.matrix() );
-			x_r.block<3, 1>(6, 0) = SO3Math::Log( x2.offset_R_L_I.matrix().transpose() * x1.offset_R_L_I.matrix() ) ;
+			x_r.block<3, 1>(3, 0) = SO3Logmap( x2.rot.matrix().transpose() * x1.rot.matrix() );
+			x_r.block<3, 1>(6, 0) = SO3Logmap( x2.offset_R_L_I.matrix().transpose() * x1.offset_R_L_I.matrix() ) ;
 
 			x_r.block<3, 1>(9, 0) = x1.offset_T_L_I - x2.offset_T_L_I;
 			x_r.block<3, 1>(12, 0) = x1.vel - x2.vel;
