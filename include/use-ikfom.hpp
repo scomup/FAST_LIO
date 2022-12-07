@@ -42,22 +42,18 @@ Eigen::Matrix<double, 12, 12> process_noise_cov()
 }
 
 
-//对应公式(2) 中的f
-Eigen::Matrix<double, 24, 1> get_f(state_ikfom s, input_ikfom in)	
+//paper (2) f: prediction model
+//update state by input(IMU)
+Eigen::Matrix<double, 24, 1> get_f(state_ikfom state, input_ikfom in)	
 {
-// 对应顺序为速度(3)，角速度(3),外参T(3),外参旋转R(3)，加速度(3),角速度偏置(3),加速度偏置(3),位置(3)，与论文公式顺序不一致
-	Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero();
-	Eigen::Vector3d omega = in.gyro - s.bg;		// 输入的imu的角速度(也就是实际测量值) - 估计的bias值(对应公式的第1行)
-	Eigen::Vector3d a_inertial = s.rot.matrix() * (in.acc - s.ba);		//  输入的imu的加速度，先转到世界坐标系（对应公式的第3行）
+	//velocity(3)，omega(3),T(3), R(3)，acceleration(3), bw(3), ba(3), p(3)
+	Eigen::Matrix<double, 24, 1> f = Eigen::Matrix<double, 24, 1>::Zero();
 
-	for (int i = 0; i < 3; i++)
-	{
-		res(i) = s.vel[i];		//速度（对应公式第2行）
-		res(i + 3) = omega[i];	//角速度（对应公式第1行）
-		res(i + 12) = a_inertial[i] + s.grav[i];		//加速度（对应公式第3行）
-	}
+	f.segment<3>(0) = state.vel; // (7) row 2: velocity
+	f.segment<3>(3) = in.gyro - state.bg; // (7) row 1: omega
+	f.segment<3>(12) = state.rot.matrix() * (in.acc - state.ba) + state.grav; // (7) row 3: acceleration 
 
-	return res;
+	return f;
 }
 
 
