@@ -21,9 +21,9 @@ namespace esekfom
 {
 	using namespace Eigen;
 
-	PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));		  //特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
-	PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1)); //有效特征点
-	PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1)); //有效特征点对应点法相量
+	PointCloud::Ptr normvec(new PointCloud(100000, 1));		  //特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
+	PointCloud::Ptr laserCloudOri(new PointCloud(100000, 1)); //有效特征点
+	PointCloud::Ptr corr_normvect(new PointCloud(100000, 1)); //有效特征点对应点法相量
 	bool point_selected_surf[100000] = {1};	   //判断是否是有效特征点
 
 	struct dyn_share_datastruct
@@ -98,7 +98,7 @@ namespace esekfom
 		}
 
 		//计算每个特征点的残差及H矩阵
-		void h_share_model(dyn_share_datastruct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
+		void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &feats_down_body,
 						   KD_TREE<PointType> &ikdtree, vector<PointVector> &Nearest_Points, bool extrinsic_est)
 		{
 			int feats_down_size = feats_down_body->points.size();
@@ -225,7 +225,7 @@ namespace esekfom
 		}
 
 		//ESKF
-		void update_iterated_dyn_share_modified(double R, PointCloudXYZI::Ptr &feats_down_body,
+		void update_iterated_dyn_share_modified(double R, PointCloud::Ptr &feats_down_body,
 												KD_TREE<PointType> &ikdtree, vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est)
 		{
 			normvec->resize(int(feats_down_body->points.size()));

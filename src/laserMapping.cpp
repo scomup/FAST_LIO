@@ -99,17 +99,17 @@ vector<PointVector>  Nearest_Points;
 vector<double>       extrinT(3, 0.0);
 vector<double>       extrinR(9, 0.0);
 deque<double>                     time_buffer;
-deque<PointCloudXYZI::Ptr>        lidar_buffer;
+deque<PointCloud::Ptr>        lidar_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
-PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
-PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr _featsArray;
+PointCloud::Ptr featsFromMap(new PointCloud());
+PointCloud::Ptr feats_undistort(new PointCloud());
+PointCloud::Ptr feats_down_body(new PointCloud());
+PointCloud::Ptr feats_down_world(new PointCloud());
+PointCloud::Ptr normvec(new PointCloud(100000, 1));
+PointCloud::Ptr laserCloudOri(new PointCloud(100000, 1));
+PointCloud::Ptr corr_normvect(new PointCloud(100000, 1));
+PointCloud::Ptr _featsArray;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -267,7 +267,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
         lidar_buffer.clear();
     }
 
-    PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
+    PointCloud::Ptr  ptr(new PointCloud());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
     time_buffer.push_back(msg->header.stamp.toSec());
@@ -418,16 +418,16 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
-PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+PointCloud::Ptr pcl_wait_pub(new PointCloud(500000, 1));
+PointCloud::Ptr pcl_wait_save(new PointCloud());
 void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 {
     if(scan_pub_en)
     {
-        PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
+        PointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
         int size = laserCloudFullRes->points.size();
-        PointCloudXYZI::Ptr laserCloudWorld( \
-                        new PointCloudXYZI(size, 1));
+        PointCloud::Ptr laserCloudWorld( \
+                        new PointCloud(size, 1));
 
         for (int i = 0; i < size; i++)
         {
@@ -449,8 +449,8 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     if (pcd_save_en)
     {
         int size = feats_undistort->points.size();
-        PointCloudXYZI::Ptr laserCloudWorld( \
-                        new PointCloudXYZI(size, 1));
+        PointCloud::Ptr laserCloudWorld( \
+                        new PointCloud(size, 1));
 
         for (int i = 0; i < size; i++)
         {
@@ -477,7 +477,7 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
 {
     int size = feats_undistort->points.size();
-    PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+    PointCloud::Ptr laserCloudIMUBody(new PointCloud(size, 1));
 
     for (int i = 0; i < size; i++)
     {
@@ -495,8 +495,8 @@ void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
 
 void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
 {
-    PointCloudXYZI::Ptr laserCloudWorld( \
-                    new PointCloudXYZI(effct_feat_num, 1));
+    PointCloud::Ptr laserCloudWorld( \
+                    new PointCloud(effct_feat_num, 1));
     for (int i = 0; i < effct_feat_num; i++)
     {
         RGBpointBodyToWorld(&laserCloudOri->points[i], \
@@ -749,7 +749,7 @@ int main(int argc, char** argv)
     FOV_DEG = (fov_deg + 10.0) > 179.9 ? 179.9 : (fov_deg + 10.0);
     HALF_FOV_COS = cos((FOV_DEG) * 0.5 * PI_M / 180.0);
 
-    _featsArray.reset(new PointCloudXYZI());
+    _featsArray.reset(new PointCloud());
 
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));

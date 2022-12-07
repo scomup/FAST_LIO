@@ -42,7 +42,7 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
 }
 
 
-void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out)
 {
   switch (time_unit)
   {
@@ -106,7 +106,7 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 }
 
 
-void Preprocess::pub_func(PointCloudXYZI &pl, const ros::Time &ct)
+void Preprocess::pub_func(PointCloud &pl, const ros::Time &ct)
 {
   pl.height = 1; pl.width = pl.size();
   sensor_msgs::PointCloud2 output;
