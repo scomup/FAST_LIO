@@ -32,32 +32,29 @@ struct dyn_share_datastruct
 // #include "sophus/so3.h"
 
 // the location of state
-enum SLoc
-{
-	P = 0,
-	R = 3,
-	Rli = 6,
-	tli = 9,
-	V = 12,
-	Bw = 15,
-	Ba = 18,
-	G = 21
-};
+constexpr int SZ = 24; //state size
+constexpr int NZ = 12; //noise size
+// the location of state
+constexpr int L_P = 0;
+constexpr int L_R = 3;
+constexpr int L_Rli = 6;
+constexpr int L_Tli = 9;
+constexpr int L_V = 12;
+constexpr int L_Bw = 15;
+constexpr int L_Ba = 18;
+constexpr int L_G = 21;
 // the location of noise
-enum NLoc
-{
-	Nw = 0,
-	Na = 3,
-	Nbw = 6,
-	Nba = 9
-};
+constexpr int L_Nw = 0;
+constexpr int L_Na = 3;
+constexpr int L_Nbw = 6;
+constexpr int L_Nba = 9;
 
 // state of
 struct State
 {
 	Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0);
-	Eigen::Quaterniond rot = Eigen::Quaterniond(Eigen::Matrix3d::Identity());
-	Eigen::Quaterniond Rli = Eigen::Quaterniond(Eigen::Matrix3d::Identity());
+	Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
+	Eigen::Matrix3d Rli = Eigen::Matrix3d::Identity();
 	Eigen::Vector3d tli = Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d bg = Eigen::Vector3d(0, 0, 0);
@@ -76,10 +73,10 @@ Eigen::Matrix<double, 12, 12> process_noise_cov()
 {
 	Eigen::Matrix<double, 12, 12> Q = Eigen::MatrixXd::Zero(12, 12);
 
-	Q.block<3, 3>(NLoc::Nw, NLoc::Nw) = 0.0001 * Eigen::Matrix3d::Identity();
-	Q.block<3, 3>(NLoc::Na, NLoc::Na) = 0.0001 * Eigen::Matrix3d::Identity();
-	Q.block<3, 3>(NLoc::Nbw, NLoc::Nbw) = 0.00001 * Eigen::Matrix3d::Identity();
-	Q.block<3, 3>(NLoc::Nba, NLoc::Nba) = 0.00001 * Eigen::Matrix3d::Identity();
+	Q.block<3, 3>(L_Nw, L_Nw) = 0.0001 * Eigen::Matrix3d::Identity();
+	Q.block<3, 3>(L_Na, L_Na) = 0.0001 * Eigen::Matrix3d::Identity();
+	Q.block<3, 3>(L_Nbw, L_Nbw) = 0.00001 * Eigen::Matrix3d::Identity();
+	Q.block<3, 3>(L_Nba, L_Nba) = 0.00001 * Eigen::Matrix3d::Identity();
 	return Q;
 }
 
@@ -88,9 +85,9 @@ Eigen::Matrix<double, 12, 12> process_noise_cov()
 Eigen::Matrix<double, 24, 1> f_func(State state, InputU in)
 {
 	Eigen::Matrix<double, 24, 1> ret = Eigen::Matrix<double, 24, 1>::Zero();
-	ret.segment<3>(SLoc::P) = state.vel;											 // (7) row 2: velocity
-	ret.segment<3>(SLoc::R) = in.gyro - state.bg;									 // (7) row 1: omega
-	ret.segment<3>(SLoc::V) = state.rot.matrix() * (in.acc - state.ba) + state.grav; // (7) row 3: acceleration
+	ret.segment<3>(L_P) = state.vel;											 // (7) row 2: velocity
+	ret.segment<3>(L_R) = in.gyro - state.bg;									 // (7) row 1: omega
+	ret.segment<3>(L_V) = state.rot * (in.acc - state.ba) + state.grav; // (7) row 3: acceleration
 	return ret;
 }
 
@@ -98,14 +95,14 @@ Eigen::Matrix<double, 24, 1> f_func(State state, InputU in)
 Eigen::Matrix<double, 24, 24> df_dx_func(State s, InputU in)
 {
 	Eigen::Matrix<double, 24, 24> cov = Eigen::Matrix<double, 24, 24>::Zero();
-	cov.block<3, 3>(SLoc::P, SLoc::V) = Eigen::Matrix3d::Identity(); // 对应公式(7)第2行第3列   I
+	cov.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity(); // 对应公式(7)第2行第3列   I
 	Eigen::Vector3d acc_corrected = in.acc - s.ba;					 // 测量加速度 = a_m - bias
 
-	cov.block<3, 3>(SLoc::V, SLoc::R) = -s.rot.matrix() * skewSymMat(acc_corrected); // 对应公式(7)第3行第1列
-	cov.block<3, 3>(SLoc::V, SLoc::Ba) = -s.rot.matrix();							 // 对应公式(7)第3行第5列
+	cov.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected); // 对应公式(7)第3行第1列
+	cov.block<3, 3>(L_V, L_Ba) = -s.rot;							 // 对应公式(7)第3行第5列
 
-	cov.template block<3, 3>(SLoc::V, SLoc::G) = Eigen::Matrix3d::Identity();	// 对应公式(7)第3行第6列   I
-	cov.template block<3, 3>(SLoc::R, SLoc::Bw) = -Eigen::Matrix3d::Identity(); // 对应公式(7)第1行第4列 (简化为-I)
+	cov.template block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity();	// 对应公式(7)第3行第6列   I
+	cov.template block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity(); // 对应公式(7)第1行第4列 (简化为-I)
 	return cov;
 }
 
@@ -113,10 +110,10 @@ Eigen::Matrix<double, 24, 24> df_dx_func(State s, InputU in)
 Eigen::Matrix<double, 24, 12> df_dw_func(State s, InputU in)
 {
 	Eigen::Matrix<double, 24, 12> cov = Eigen::Matrix<double, 24, 12>::Zero();
-	cov.block<3, 3>(SLoc::V, NLoc::Na) = -s.rot.matrix();				// 对应公式(7)第3行第2列  -R
-	cov.block<3, 3>(SLoc::R, NLoc::Nw) = -Eigen::Matrix3d::Identity();	// 对应公式(7)第1行第1列  -A(w dt)简化为-I
-	cov.block<3, 3>(SLoc::Bw, NLoc::Nbw) = Eigen::Matrix3d::Identity(); // 对应公式(7)第4行第3列  I
-	cov.block<3, 3>(SLoc::Ba, NLoc::Nba) = Eigen::Matrix3d::Identity(); // 对应公式(7)第5行第4列  I
+	cov.block<3, 3>(L_V, L_Na) = -s.rot;				// 对应公式(7)第3行第2列  -R
+	cov.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity();	// 对应公式(7)第1行第1列  -A(w dt)简化为-I
+	cov.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity(); // 对应公式(7)第4行第3列  I
+	cov.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity(); // 对应公式(7)第5行第4列  I
 	return cov;
 }
 
@@ -153,16 +150,29 @@ public:
 	State boxplus(State x, Eigen::Matrix<double, 24, 1> f)
 	{
 		State x_r;
-		x_r.pos = x.pos + f.block<3, 1>(0, 0);
-		x_r.rot = x.rot * Eigen::Quaterniond(SO3Expmap(f.block<3, 1>(3, 0)));
-		x_r.Rli = x.Rli * Eigen::Quaterniond(SO3Expmap(f.block<3, 1>(6, 0)));
+		x_r.pos = x.pos + f.segment<3>(L_P);
+		x_r.rot = x.rot * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_R)));
+		x_r.Rli = x.Rli * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_Rli)));
+		x_r.tli = x.tli + f.segment<3>(L_Tli);
+		x_r.vel = x.vel + f.segment<3>(L_V);
+		x_r.bg = x.bg + f.segment<3>(L_Bw);
+		x_r.ba = x.ba + f.segment<3>(L_Ba);
+		x_r.grav = x.grav + f.segment<3>(L_G);
+		return x_r;
+	}
 
-		x_r.tli = x.tli + f.block<3, 1>(9, 0);
-		x_r.vel = x.vel + f.block<3, 1>(12, 0);
-		x_r.bg = x.bg + f.block<3, 1>(15, 0);
-		x_r.ba = x.ba + f.block<3, 1>(18, 0);
-		x_r.grav = x.grav + f.block<3, 1>(21, 0);
-
+	// 广义减法
+	vectorized_state boxminus(State x1, State x2)
+	{
+		vectorized_state x_r = vectorized_state::Zero();
+		x_r.segment<3>(L_P) = x1.pos - x2.pos;
+		x_r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * x1.rot);
+		x_r.segment<3>(L_Rli) = SO3Logmap(x2.Rli.transpose() * x1.Rli);
+		x_r.segment<3>(L_Tli) = x1.tli - x2.tli;
+		x_r.segment<3>(L_V) = x1.vel - x2.vel;
+		x_r.segment<3>(L_Bw) = x1.bg - x2.bg;
+		x_r.segment<3>(L_Ba) = x1.ba - x2.ba;
+		x_r.segment<3>(L_G) = x1.grav - x2.grav;
 		return x_r;
 	}
 
@@ -172,13 +182,13 @@ public:
 		Eigen::Matrix<double, 24, 1> f = f_func(x_, i_in);		  // paper (3) f
 		Eigen::Matrix<double, 24, 24> f_x = df_dx_func(x_, i_in); // paper (7) df/dx
 		Eigen::Matrix<double, 24, 12> f_w = df_dw_func(x_, i_in); // paper (7) df/dw
-
 		x_ = boxplus(x_, f * dt); // 前向传播 公式(4)
 
 		f_x = Matrix<double, 24, 24>::Identity() + f_x * dt; // 之前Fx矩阵里的项没加单位阵，没乘dt   这里补上
 
 		P_ = (f_x)*P_ * (f_x).transpose() + (dt * f_w) * Q * (dt * f_w).transpose(); // 传播协方差矩阵，即公式(8)
 	}
+
 
 	// 计算每个特征点的残差及H矩阵
 	void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &feats_down_body,
@@ -269,11 +279,11 @@ public:
 			V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
 			// 计算雅可比矩阵H
-			V3D C(x_.rot.matrix().transpose() * norm_vec);
+			V3D C(x_.rot.transpose() * norm_vec);
 			V3D A(point_I_crossmat * C);
 			if (extrinsic_est)
 			{
-				V3D B(point_crossmat * x_.Rli.matrix().transpose() * C);
+				V3D B(point_crossmat * x_.Rli.transpose() * C);
 				ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
 			}
 			else
@@ -286,24 +296,6 @@ public:
 		}
 	}
 
-	// 广义减法
-	vectorized_state boxminus(State x1, State x2)
-	{
-		vectorized_state x_r = vectorized_state::Zero();
-
-		x_r.block<3, 1>(0, 0) = x1.pos - x2.pos;
-
-		x_r.block<3, 1>(3, 0) = SO3Logmap(x2.rot.matrix().transpose() * x1.rot.matrix());
-		x_r.block<3, 1>(6, 0) = SO3Logmap(x2.Rli.matrix().transpose() * x1.Rli.matrix());
-
-		x_r.block<3, 1>(9, 0) = x1.tli - x2.tli;
-		x_r.block<3, 1>(12, 0) = x1.vel - x2.vel;
-		x_r.block<3, 1>(15, 0) = x1.bg - x2.bg;
-		x_r.block<3, 1>(18, 0) = x1.ba - x2.ba;
-		x_r.block<3, 1>(21, 0) = x1.grav - x2.grav;
-
-		return x_r;
-	}
 
 	// ESKF
 	void update_iterated_dyn_share_modified(double R, PointCloud::Ptr &feats_down_body,

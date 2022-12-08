@@ -229,7 +229,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekf &kf_state, PointCl
   /*** Initialize IMU pose ***/
   State imu_state = kf_state.get_x();
   IMUpose.clear();
-  IMUpose.push_back(set_pose6d(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.toRotationMatrix()));
+  IMUpose.push_back(set_pose6d(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
 
   /*** forward propagation at each imu point ***/
   V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
@@ -283,7 +283,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekf &kf_state, PointCl
       acc_s_last[i] += imu_state.grav[i];
     }
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
-    IMUpose.push_back(set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.toRotationMatrix()));
+    IMUpose.push_back(set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
   }
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
@@ -321,7 +321,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekf &kf_state, PointCl
       
       V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
       V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
-      V3D P_compensate = imu_state.Rli.conjugate() * (imu_state.rot.conjugate() * (R_i * (imu_state.Rli * P_i + imu_state.tli) + T_ei) - imu_state.tli);// not accurate!
+      V3D P_compensate = imu_state.Rli.transpose() * (imu_state.rot.transpose() * (R_i * (imu_state.Rli * P_i + imu_state.tli) + T_ei) - imu_state.tli);// not accurate!
       
       // save Undistorted points and their rotation
       it_pcl->x = P_compensate(0);
