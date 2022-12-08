@@ -144,7 +144,7 @@ void SigHandle(int sig)
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -156,7 +156,7 @@ template<typename T>
 void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 {
     V3D p_body(pi[0], pi[1], pi[2]);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po[0] = p_global(0);
     po[1] = p_global(1);
@@ -166,7 +166,7 @@ void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -177,7 +177,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
 {
     V3D p_body_lidar(pi->x, pi->y, pi->z);
-    V3D p_body_imu(state_point.offset_R_L_I*p_body_lidar + state_point.offset_T_L_I);
+    V3D p_body_imu(state_point.Rli*p_body_lidar + state_point.tli);
 
     po->x = p_body_imu(0);
     po->y = p_body_imu(1);
@@ -680,7 +680,7 @@ int main(int argc, char** argv)
             p_imu->Process(Measures, kf, feats_undistort); //deskew lidar points. by backward propagation
             
             state_point = kf.get_x();
-            pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I; //Lidar point in global frame.
+            pos_lid = state_point.pos + state_point.rot * state_point.tli; //Lidar point in global frame.
 
             if (feats_undistort->empty() || (feats_undistort == NULL))
             {
@@ -742,11 +742,12 @@ int main(int argc, char** argv)
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, feats_down_body, ikdtree, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en);
 
             state_point = kf.get_x();
-            pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-            geoQuat.x = state_point.rot.coeffs()[0];
-            geoQuat.y = state_point.rot.coeffs()[1];
-            geoQuat.z = state_point.rot.coeffs()[2];
-            geoQuat.w = state_point.rot.coeffs()[3];
+            pos_lid = state_point.pos + state_point.rot * state_point.tli;
+            Eigen::Quaterniond q = Eigen::Quaterniond(state_point.rot);
+            geoQuat.x = q.x();
+            geoQuat.y = q.y();
+            geoQuat.z = q.z();
+            geoQuat.w = q.w();
 
             double t_update_end = omp_get_wtime();
 

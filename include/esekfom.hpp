@@ -57,8 +57,8 @@ struct State
 {
 	Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0);
 	Eigen::Quaterniond rot = Eigen::Quaterniond(Eigen::Matrix3d::Identity());
-	Eigen::Quaterniond offset_R_L_I = Eigen::Quaterniond(Eigen::Matrix3d::Identity());
-	Eigen::Vector3d offset_T_L_I = Eigen::Vector3d(0, 0, 0);
+	Eigen::Quaterniond Rli = Eigen::Quaterniond(Eigen::Matrix3d::Identity());
+	Eigen::Vector3d tli = Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d bg = Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d ba = Eigen::Vector3d(0, 0, 0);
@@ -155,9 +155,9 @@ public:
 		State x_r;
 		x_r.pos = x.pos + f.block<3, 1>(0, 0);
 		x_r.rot = x.rot * Eigen::Quaterniond(SO3Expmap(f.block<3, 1>(3, 0)));
-		x_r.offset_R_L_I = x.offset_R_L_I * Eigen::Quaterniond(SO3Expmap(f.block<3, 1>(6, 0)));
+		x_r.Rli = x.Rli * Eigen::Quaterniond(SO3Expmap(f.block<3, 1>(6, 0)));
 
-		x_r.offset_T_L_I = x.offset_T_L_I + f.block<3, 1>(9, 0);
+		x_r.tli = x.tli + f.block<3, 1>(9, 0);
 		x_r.vel = x.vel + f.block<3, 1>(12, 0);
 		x_r.bg = x.bg + f.block<3, 1>(15, 0);
 		x_r.ba = x.ba + f.block<3, 1>(18, 0);
@@ -195,7 +195,7 @@ public:
 
 			V3D p_body(point_body.x, point_body.y, point_body.z);
 			// 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
-			V3D p_global(x_.rot * (x_.offset_R_L_I * p_body + x_.offset_T_L_I) + x_.pos);
+			V3D p_global(x_.rot * (x_.Rli * p_body + x_.tli) + x_.pos);
 			point_world.x = p_global(0);
 			point_world.y = p_global(1);
 			point_world.z = p_global(2);
@@ -260,7 +260,7 @@ public:
 			V3D point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
 			M3D point_crossmat;
 			point_crossmat << SKEW_SYM_MATRX(point_);
-			V3D point_I_ = x_.offset_R_L_I * point_ + x_.offset_T_L_I;
+			V3D point_I_ = x_.Rli * point_ + x_.tli;
 			M3D point_I_crossmat;
 			point_I_crossmat << SKEW_SYM_MATRX(point_I_);
 
@@ -273,7 +273,7 @@ public:
 			V3D A(point_I_crossmat * C);
 			if (extrinsic_est)
 			{
-				V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
+				V3D B(point_crossmat * x_.Rli.matrix().transpose() * C);
 				ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
 			}
 			else
@@ -294,9 +294,9 @@ public:
 		x_r.block<3, 1>(0, 0) = x1.pos - x2.pos;
 
 		x_r.block<3, 1>(3, 0) = SO3Logmap(x2.rot.matrix().transpose() * x1.rot.matrix());
-		x_r.block<3, 1>(6, 0) = SO3Logmap(x2.offset_R_L_I.matrix().transpose() * x1.offset_R_L_I.matrix());
+		x_r.block<3, 1>(6, 0) = SO3Logmap(x2.Rli.matrix().transpose() * x1.Rli.matrix());
 
-		x_r.block<3, 1>(9, 0) = x1.offset_T_L_I - x2.offset_T_L_I;
+		x_r.block<3, 1>(9, 0) = x1.tli - x2.tli;
 		x_r.block<3, 1>(12, 0) = x1.vel - x2.vel;
 		x_r.block<3, 1>(15, 0) = x1.bg - x2.bg;
 		x_r.block<3, 1>(18, 0) = x1.ba - x2.ba;
