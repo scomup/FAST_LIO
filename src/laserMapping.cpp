@@ -56,7 +56,7 @@
 #include <tf/transform_broadcaster.h>
 #include <geometry_msgs/Vector3.h>
 #include "preprocess.h"
-#include <ikd-Tree/ikd_Tree.h>
+#include "ikd_Tree.h"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -68,7 +68,7 @@ double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_ti
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -89,7 +89,6 @@ double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min
 double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
-bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 
@@ -106,9 +105,6 @@ PointCloud::Ptr featsFromMap(new PointCloud());
 PointCloud::Ptr feats_undistort(new PointCloud());
 PointCloud::Ptr feats_down_body(new PointCloud());
 PointCloud::Ptr feats_down_world(new PointCloud());
-PointCloud::Ptr normvec(new PointCloud(100000, 1));
-PointCloud::Ptr laserCloudOri(new PointCloud(100000, 1));
-PointCloud::Ptr corr_normvect(new PointCloud(100000, 1));
 PointCloud::Ptr _featsArray;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -124,8 +120,8 @@ M3D Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
 MeasureGroup Measures;
-esekfom::esekf kf;
-state_ikfom state_point;
+esekf kf;
+State state_point;
 Eigen::Vector3d pos_lid;
 
 nav_msgs::Path path;
@@ -143,16 +139,6 @@ void SigHandle(int sig)
     sig_buffer.notify_all();
 }
 
-void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, state_ikfom &s)
-{
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
-
-    po->x = p_global(0);
-    po->y = p_global(1);
-    po->z = p_global(2);
-    po->intensity = pi->intensity;
-}
 
 
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
@@ -493,22 +479,6 @@ void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
     publish_count -= PUBFRAME_PERIOD;
 }
 
-void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
-{
-    PointCloud::Ptr laserCloudWorld( \
-                    new PointCloud(effct_feat_num, 1));
-    for (int i = 0; i < effct_feat_num; i++)
-    {
-        RGBpointBodyToWorld(&laserCloudOri->points[i], \
-                            &laserCloudWorld->points[i]);
-    }
-    sensor_msgs::PointCloud2 laserCloudFullRes3;
-    pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
-    laserCloudFullRes3.header.stamp = ros::Time().fromSec(lidar_end_time);
-    laserCloudFullRes3.header.frame_id = "camera_init";
-    pubLaserCloudEffect.publish(laserCloudFullRes3);
-}
-
 void publish_map(const ros::Publisher & pubLaserCloudMap)
 {
     sensor_msgs::PointCloud2 laserCloudMap;
@@ -580,123 +550,6 @@ void publish_path(const ros::Publisher pubPath)
     }
 }
 
-void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct &ekfom_data)
-{
-    double match_start = omp_get_wtime();
-    laserCloudOri->clear(); 
-    corr_normvect->clear(); 
-    total_residual = 0.0; 
-
-    /** closest surface search and residual computation **/
-    #ifdef MP_EN
-        omp_set_num_threads(MP_PROC_NUM);
-        #pragma omp parallel for
-    #endif
-    for (int i = 0; i < feats_down_size; i++)
-    {
-        PointType &point_body  = feats_down_body->points[i]; 
-        PointType &point_world = feats_down_world->points[i]; 
-
-        /* transform to world frame */
-        V3D p_body(point_body.x, point_body.y, point_body.z);
-        V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
-        point_world.x = p_global(0);
-        point_world.y = p_global(1);
-        point_world.z = p_global(2);
-        point_world.intensity = point_body.intensity;
-
-        vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-
-        auto &points_near = Nearest_Points[i];
-
-        if (ekfom_data.converge)
-        {
-            /** Find the closest surfaces in the map **/
-            ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true;
-        }
-
-        if (!point_selected_surf[i]) continue;
-
-        VF(4) pabcd;
-        point_selected_surf[i] = false;
-        if (esti_plane(pabcd, points_near, 0.1f))
-        {
-            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
-            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
-
-            if (s > 0.9)
-            {
-                point_selected_surf[i] = true;
-                normvec->points[i].x = pabcd(0);
-                normvec->points[i].y = pabcd(1);
-                normvec->points[i].z = pabcd(2);
-                normvec->points[i].intensity = pd2;
-                res_last[i] = abs(pd2);
-            }
-        }
-    }
-    
-    effct_feat_num = 0;
-
-    for (int i = 0; i < feats_down_size; i++)
-    {
-        if (point_selected_surf[i])
-        {
-            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
-            corr_normvect->points[effct_feat_num] = normvec->points[i];
-            total_residual += res_last[i];
-            effct_feat_num ++;
-        }
-    }
-
-    if (effct_feat_num < 1)
-    {
-        ekfom_data.valid = false;
-        ROS_WARN("No Effective Points! \n");
-        return;
-    }
-
-    res_mean_last = total_residual / effct_feat_num;
-    match_time  += omp_get_wtime() - match_start;
-    double solve_start_  = omp_get_wtime();
-    
-    /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
-    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
-    ekfom_data.h.resize(effct_feat_num);
-
-    for (int i = 0; i < effct_feat_num; i++)
-    {
-        const PointType &laser_p  = laserCloudOri->points[i];
-        V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-        M3D point_be_crossmat;
-        point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
-        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
-        M3D point_crossmat;
-        point_crossmat<<SKEW_SYM_MATRX(point_this);
-
-        /*** get the normal vector of closest surface/corner ***/
-        const PointType &norm_p = corr_normvect->points[i];
-        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
-
-        /*** calculate the Measuremnt Jacobian matrix H ***/
-        V3D C(s.rot.conjugate() *norm_vec);
-        V3D A(point_crossmat * C);
-        if (extrinsic_est_en)
-        {
-            V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
-        }
-        else
-        {
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-        }
-
-        /*** Measuremnt: distance to the closest surface/corner ***/
-        ekfom_data.h(i) = -norm_p.intensity;
-    }
-    solve_time += omp_get_wtime() - solve_start_;
-}
 
 int main(int argc, char** argv)
 {
@@ -730,7 +583,6 @@ int main(int argc, char** argv)
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
-    nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
@@ -873,7 +725,6 @@ int main(int argc, char** argv)
                 continue;
             }
             
-            normvec->resize(feats_down_size);
             feats_down_world->resize(feats_down_size);
 
 
@@ -911,8 +762,6 @@ int main(int argc, char** argv)
             if (path_en)                         publish_path(pubPath);
             if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
-            // publish_effect_world(pubLaserCloudEffect);
-            // publish_map(pubLaserCloudMap);
         }
 
         status = ros::ok();
@@ -934,23 +783,6 @@ int main(int argc, char** argv)
     fout_out.close();
     fout_pre.close();
 
-    if (runtime_pos_log)
-    {
-        vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
-        FILE *fp2;
-        string log_dir = root_dir + "/Log/fast_lio_time_log.csv";
-        fp2 = fopen(log_dir.c_str(),"w");
-        fprintf(fp2,"time_stamp, total time, scan point size, incremental time, search time, delete size, delete time, tree size st, tree size end, add point size, preprocess time\n");
-        for (int i = 0;i<time_log_counter; i++){
-            fprintf(fp2,"%0.8f,%0.8f,%d,%0.8f,%0.8f,%d,%0.8f,%d,%d,%d,%0.8f\n",T1[i],s_plot[i],int(s_plot2[i]),s_plot3[i],s_plot4[i],int(s_plot5[i]),s_plot6[i],int(s_plot7[i]),int(s_plot8[i]), int(s_plot10[i]), s_plot11[i]);
-            t.push_back(T1[i]);
-            s_vec.push_back(s_plot9[i]);
-            s_vec2.push_back(s_plot3[i] + s_plot6[i]);
-            s_vec3.push_back(s_plot4[i]);
-            s_vec5.push_back(s_plot[i]);
-        }
-        fclose(fp2);
-    }
 
     return 0;
 }
