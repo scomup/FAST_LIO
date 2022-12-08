@@ -5,9 +5,7 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "laserMapping");
   ros::NodeHandle nh;
 
-  nh.param<bool>("publish/path_en", path_en, true);
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
-  nh.param<bool>("publish/dense_publish_en", dense_pub_en, true);
   nh.param<bool>("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
   nh.param<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
   nh.param<std::string>("map_file_path", map_file_path, "");
@@ -33,7 +31,7 @@ int main(int argc, char **argv)
   nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
   nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
   nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
-  nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
+
   nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
   nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
   nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
@@ -114,14 +112,6 @@ int main(int argc, char **argv)
         continue;
       }
 
-      double t0, t1, t2, t3, t4, t5, match_start, solve_start, svd_time;
-
-      match_time = 0;
-      kdtree_search_time = 0.0;
-      solve_time = 0;
-      solve_const_H_time = 0;
-      svd_time = 0;
-      t0 = omp_get_wtime();
 
       p_imu->Process(Measures, kf, feats_undistort); // deskew lidar points. by backward propagation
 
@@ -141,7 +131,6 @@ int main(int argc, char **argv)
       /*** downsample the feature points in a scan ***/
       downSizeFilterSurf.setInputCloud(feats_undistort);
       downSizeFilterSurf.filter(*feats_down_body);
-      t1 = omp_get_wtime();
       feats_down_size = feats_down_body->points.size();
       /*** initialize the map kdtree ***/
       if (ikdtree.Root_Node == nullptr)
@@ -177,7 +166,6 @@ int main(int argc, char **argv)
       int rematch_num = 0;
       bool nearest_search_en = true; //
 
-      t2 = omp_get_wtime();
 
       /*** iterated state estimation ***/
       double t_update_start = omp_get_wtime();
@@ -186,7 +174,6 @@ int main(int argc, char **argv)
       kf.iterated_update(feats_down_body, ikdtree, Nearest_Points);
 
       state_point = kf.get_x();
-      pos_lid = state_point.pos + state_point.rot * state_point.tli;
       Eigen::Quaterniond q = Eigen::Quaterniond(state_point.rot);
       geoQuat.x = q.x();
       geoQuat.y = q.y();
@@ -199,37 +186,18 @@ int main(int argc, char **argv)
       publish_odometry(pubOdomAftMapped);
 
       /*** add the feature points to map kdtree ***/
-      t3 = omp_get_wtime();
       map_incremental();
-      t5 = omp_get_wtime();
 
       /******* Publish points *******/
-      if (path_en)
-        publish_path(pubPath);
-      if (scan_pub_en || pcd_save_en)
+      if (scan_pub_en)
         publish_frame_world(pubLaserCloudFull);
-      if (scan_pub_en && scan_body_pub_en)
-        publish_frame_body(pubLaserCloudFull_body);
     }
 
     status = ros::ok();
     rate.sleep();
   }
 
-  /**************** save map ****************/
-  /* 1. make sure you have enough memories
-  /* 2. pcd save will largely influence the real-time performences **/
-  if (pcl_wait_save->size() > 0 && pcd_save_en)
-  {
-    std::string file_name = std::string("scans.pcd");
-    std::string all_points_dir(std::string(std::string(ROOT_DIR) + "PCD/") + file_name);
-    pcl::PCDWriter pcd_writer;
-    std::cout << "current scan saved to /PCD/" << file_name << std::endl;
-    pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
-  }
 
-  fout_out.close();
-  fout_pre.close();
 
   return 0;
 }

@@ -65,7 +65,6 @@
 /*** Time Log Variables ***/
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
-double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
 bool pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
@@ -89,7 +88,7 @@ double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_en
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
-bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool scan_pub_en = false, scan_body_pub_en = false;
 
 std::vector<std::vector<int>> pointSearchInd_surf;
 std::vector<BoxPointType> cub_needrm;
@@ -130,6 +129,17 @@ geometry_msgs::PoseStamped msg_body_pose;
 
 std::shared_ptr<Preprocess> p_pre(new Preprocess());
 std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
+
+PointCloud::Ptr pcl_wait_pub(new PointCloud(500000, 1));
+PointCloud::Ptr pcl_wait_save(new PointCloud());
+
+BoxPointType LocalMap_Points;
+bool Localmap_Initialized = false;
+
+int process_increments = 0;
+
+double timediff_lidar_wrt_imu = 0.0;
+bool timediff_set_flg = false;
 
 void SigHandle(int sig)
 {
@@ -188,13 +198,10 @@ void points_cache_collect()
   ikdtree.acquire_removed_points(points_history);
 }
 
-BoxPointType LocalMap_Points;
-bool Localmap_Initialized = false;
 void lasermap_fov_segment()
 {
   cub_needrm.clear();
   kdtree_delete_counter = 0;
-  kdtree_delete_time = 0.0;
   pointBodyToWorld(XAxisPoint_body, XAxisPoint_world);
   Vec3 pos_LiD = pos_lid;
   if (!Localmap_Initialized)
@@ -245,7 +252,6 @@ void lasermap_fov_segment()
   double delete_begin = omp_get_wtime();
   if (cub_needrm.size() > 0)
     kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
-  kdtree_delete_time = omp_get_wtime() - delete_begin;
 }
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -268,9 +274,6 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
   mtx_buffer.unlock();
   sig_buffer.notify_all();
 }
-
-double timediff_lidar_wrt_imu = 0.0;
-bool timediff_set_flg = false;
 
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
@@ -361,7 +364,6 @@ bool sync_packages(MeasureGroup &meas)
   return true;
 }
 
-int process_increments = 0;
 void map_incremental()
 {
   PointVector PointToAdd;
@@ -411,81 +413,26 @@ void map_incremental()
   add_point_size = ikdtree.Add_Points(PointToAdd, true);
   ikdtree.Add_Points(PointNoNeedDownsample, false);
   add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
-  kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-PointCloud::Ptr pcl_wait_pub(new PointCloud(500000, 1));
-PointCloud::Ptr pcl_wait_save(new PointCloud());
 void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
 {
-  if (scan_pub_en)
-  {
-    PointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
-    int size = laserCloudFullRes->points.size();
-    PointCloud::Ptr laserCloudWorld(
-        new PointCloud(size, 1));
-
-    for (int i = 0; i < size; i++)
-    {
-      RGBpointBodyToWorld(&laserCloudFullRes->points[i],
-                          &laserCloudWorld->points[i]);
-    }
-
-    sensor_msgs::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-    laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-    laserCloudmsg.header.frame_id = "camera_init";
-    pubLaserCloudFull.publish(laserCloudmsg);
-    publish_count -= PUBFRAME_PERIOD;
-  }
-
-  /**************** save map ****************/
-  /* 1. make sure you have enough memories
-  /* 2. noted that pcd save will influence the real-time performences **/
-  if (pcd_save_en)
-  {
-    int size = feats_undistort->points.size();
-    PointCloud::Ptr laserCloudWorld(
-        new PointCloud(size, 1));
-
-    for (int i = 0; i < size; i++)
-    {
-      RGBpointBodyToWorld(&feats_undistort->points[i],
-                          &laserCloudWorld->points[i]);
-    }
-    *pcl_wait_save += *laserCloudWorld;
-
-    static int scan_wait_num = 0;
-    scan_wait_num++;
-    if (pcl_wait_save->size() > 0 && pcd_save_interval > 0 && scan_wait_num >= pcd_save_interval)
-    {
-      pcd_index++;
-      std::string all_points_dir(std::string(std::string(ROOT_DIR) + "PCD/scans_") + boost::to_string(pcd_index) + std::string(".pcd"));
-      pcl::PCDWriter pcd_writer;
-      std::cout << "current scan saved to /PCD/" << all_points_dir << std::endl;
-      pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
-      pcl_wait_save->clear();
-      scan_wait_num = 0;
-    }
-  }
-}
-
-void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body)
-{
-  int size = feats_undistort->points.size();
-  PointCloud::Ptr laserCloudIMUBody(new PointCloud(size, 1));
+  PointCloud::Ptr laserCloudFullRes(feats_undistort);
+  int size = laserCloudFullRes->points.size();
+  PointCloud::Ptr laserCloudWorld(
+      new PointCloud(size, 1));
 
   for (int i = 0; i < size; i++)
   {
-    RGBpointBodyLidarToIMU(&feats_undistort->points[i],
-                           &laserCloudIMUBody->points[i]);
+    RGBpointBodyToWorld(&laserCloudFullRes->points[i],
+                        &laserCloudWorld->points[i]);
   }
 
   sensor_msgs::PointCloud2 laserCloudmsg;
-  pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
+  pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
   laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-  laserCloudmsg.header.frame_id = "body";
-  pubLaserCloudFull_body.publish(laserCloudmsg);
+  laserCloudmsg.header.frame_id = "camera_init";
+  pubLaserCloudFull.publish(laserCloudmsg);
   publish_count -= PUBFRAME_PERIOD;
 }
 
@@ -543,18 +490,3 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "camera_init", "body"));
 }
 
-void publish_path(const ros::Publisher pubPath)
-{
-  set_posestamp(msg_body_pose);
-  msg_body_pose.header.stamp = ros::Time().fromSec(lidar_end_time);
-  msg_body_pose.header.frame_id = "camera_init";
-
-  /*** if path is too large, the rvis will crash ***/
-  static int jjj = 0;
-  jjj++;
-  if (jjj % 10 == 0)
-  {
-    path.poses.push_back(msg_body_pose);
-    pubPath.publish(path);
-  }
-}
