@@ -120,8 +120,8 @@ Mat3 Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
 MeasureGroup Measures;
-esekf kf;
-State state_point;
+ESEKF::esekf kf;
+ESEKF::State state_point;
 Eigen::Vector3d pos_lid;
 
 nav_msgs::Path path;
@@ -613,11 +613,11 @@ int main(int argc, char **argv)
 
   _featsArray.reset(new PointCloud());
 
-  memset(point_selected_surf, true, sizeof(point_selected_surf));
+  memset(ESEKF::point_selected_surf, true, sizeof(ESEKF::point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
   downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
-  memset(point_selected_surf, true, sizeof(point_selected_surf));
+  memset(ESEKF::point_selected_surf, true, sizeof(ESEKF::point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);

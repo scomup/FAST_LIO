@@ -13,7 +13,7 @@
 #include "so3_math.hpp"
 
 // 该hpp主要包含：广义加减法，前向传播主函数，计算特征点残差及其雅可比，ESKF主函数
-namespace esekfom
+namespace ESEKF
 {
   const double epsi = 0.001; // ESKF迭代时，如果dx<epsi 认为收敛
 
