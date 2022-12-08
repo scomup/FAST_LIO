@@ -187,7 +187,6 @@ void points_cache_collect()
 {
   PointVector points_history;
   ikdtree.acquire_removed_points(points_history);
-  // for (int i = 0; i < points_history.size(); i++) _featsArray->push_back(points_history[i]);
 }
 
 BoxPointType LocalMap_Points;
@@ -603,6 +602,8 @@ int main(int argc, char **argv)
   path.header.stamp = ros::Time::now();
   path.header.frame_id = "camera_init";
 
+  kf.init(LASER_POINT_COV, NUM_MAX_ITERATIONS, extrinsic_est_en);
+
   /*** variables definition ***/
   int effect_feat_num = 0, frame_num = 0;
   double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
@@ -741,8 +742,8 @@ int main(int argc, char **argv)
       /*** iterated state estimation ***/
       double t_update_start = omp_get_wtime();
       double solve_H_time = 0;
-      // kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
-      kf.update_iterated_dyn_share_modified(LASER_POINT_COV, feats_down_body, ikdtree, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en);
+      
+      kf.iterated_update(feats_down_body, ikdtree, Nearest_Points);
 
       state_point = kf.get_x();
       pos_lid = state_point.pos + state_point.rot * state_point.tli;

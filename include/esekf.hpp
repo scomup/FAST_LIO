@@ -158,6 +158,14 @@ namespace ESEKF
     esekf(){};
     ~esekf(){};
 
+    void init(double R, int maximum_iter, bool extrinsic_est)
+    {
+      R_ = R;
+      maximum_iter_ = maximum_iter;
+      extrinsic_est_ = extrinsic_est;
+      
+    }
+
     State get_x()
     {
       return x_;
@@ -298,11 +306,9 @@ namespace ESEKF
     }
 
     // ESKF
-    void update_iterated_dyn_share_modified(double R, PointCloud::Ptr &feats_down_body,
-                                            KD_TREE<PointType> &ikdtree,
-                                            std::vector<PointVector> &Nearest_Points,
-                                            int maximum_iter,
-                                            bool extrinsic_est)
+    void iterated_update(PointCloud::Ptr &feats_down_body,
+                         KD_TREE<PointType> &ikdtree,
+                         std::vector<PointVector> &Nearest_Points)
     {
       normvec->resize(int(feats_down_body->points.size()));
 
@@ -315,11 +321,11 @@ namespace ESEKF
 
       StateVec dx_new = StateVec::Zero(); // 24X1的向量
 
-      for (int i = -1; i < maximum_iter; i++) // maximum_iter是卡尔曼滤波的最大迭代次数
+      for (int i = -1; i < maximum_iter_; i++) // maximum_iter是卡尔曼滤波的最大迭代次数
       {
         dyn_share.valid = true;
         // 计算雅克比，也就是点面残差的导数 H(代码里是h_x)
-        h_share_model(dyn_share, feats_down_body, ikdtree, Nearest_Points, extrinsic_est);
+        h_share_model(dyn_share, feats_down_body, ikdtree, Nearest_Points, extrinsic_est_);
 
         if (!dyn_share.valid)
         {
@@ -330,7 +336,7 @@ namespace ESEKF
 
         auto H = dyn_share.h_x;
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
-        K = (H.transpose() * H / R + P_.inverse()).inverse() * H.transpose() / R;                                         // 卡尔曼增益  这里R视为常数
+        K = (H.transpose() * H / R_ + P_.inverse()).inverse() * H.transpose() / R_;                                         // 卡尔曼增益  这里R视为常数
         Eigen::Matrix<double, SZ, 1> dx = K * dyn_share.h + (K * H - Eigen::Matrix<double, SZ, SZ>::Identity()) * dx_new; // 公式(18)
 
         x_ = x_.plus(dx); // 公式(18)
@@ -348,12 +354,12 @@ namespace ESEKF
         if (dyn_share.converge)
           t++;
 
-        if (!t && i == maximum_iter - 2) // 如果迭代了3次还没收敛 强制令成true，h_share_model函数中会重新寻找近邻点
+        if (!t && i == maximum_iter_ - 2) // 如果迭代了3次还没收敛 强制令成true，h_share_model函数中会重新寻找近邻点
         {
           dyn_share.converge = true;
         }
 
-        if (t > 1 || i == maximum_iter - 1)
+        if (t > 1 || i == maximum_iter_ - 1)
         {
           P_ = (Eigen::Matrix<double, SZ, SZ>::Identity() - K * H) * P_; // 公式(19)
           return;
@@ -364,6 +370,9 @@ namespace ESEKF
   private:
     State x_;
     Cov P_ = Cov::Identity();
+    double R_;
+    int maximum_iter_;
+    bool extrinsic_est_;
   };
 
 }
