@@ -76,11 +76,11 @@ float DET_RANGE = 300.0f;
 const float MOV_THRESHOLD = 1.5f;
 double time_diff_lidar_to_imu = 0.0;
 
-mutex mtx_buffer;
-condition_variable sig_buffer;
+std::mutex mtx_buffer;
+std::condition_variable sig_buffer;
 
-string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic;
+std::string root_dir = ROOT_DIR;
+std::string map_file_path, lid_topic, imu_topic;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -92,11 +92,11 @@ int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudVal
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 
-vector<vector<int>>  pointSearchInd_surf; 
-vector<BoxPointType> cub_needrm;
-vector<PointVector>  Nearest_Points; 
-vector<double>       extrinT(3, 0.0);
-vector<double>       extrinR(9, 0.0);
+std::vector<std::vector<int>>  pointSearchInd_surf; 
+std::vector<BoxPointType> cub_needrm;
+std::vector<PointVector>  Nearest_Points; 
+std::vector<double>       extrinT(3, 0.0);
+std::vector<double>       extrinR(9, 0.0);
 std::deque<double>                     time_buffer;
 std::deque<PointCloud::Ptr>        lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
@@ -129,8 +129,8 @@ nav_msgs::Odometry odomAftMapped;
 geometry_msgs::Quaternion geoQuat;
 geometry_msgs::PoseStamped msg_body_pose;
 
-shared_ptr<Preprocess> p_pre(new Preprocess());
-shared_ptr<ImuProcess> p_imu(new ImuProcess());
+std::shared_ptr<Preprocess> p_pre(new Preprocess());
+std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
 
 void SigHandle(int sig)
 {
@@ -219,7 +219,7 @@ void lasermap_fov_segment()
     if (!need_move) return;
     BoxPointType New_LocalMap_Points, tmp_boxpoints;
     New_LocalMap_Points = LocalMap_Points;
-    float mov_dist = max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9, double(DET_RANGE * (MOV_THRESHOLD -1)));
+    float mov_dist = std::max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9, double(DET_RANGE * (MOV_THRESHOLD -1)));
     for (int i = 0; i < 3; i++){
         tmp_boxpoints = LocalMap_Points;
         if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE){
@@ -270,7 +270,7 @@ bool   timediff_set_flg = false;
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
 {
     publish_count ++;
-    // cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<endl;
+    // std::cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<std::endl;
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
 
     if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
@@ -450,9 +450,9 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
         {
             pcd_index ++;
-            string all_points_dir(string(string(ROOT_DIR) + "PCD/scans_") + to_string(pcd_index) + string(".pcd"));
+            std::string all_points_dir(std::string(std::string(ROOT_DIR) + "PCD/scans_") + boost::to_string(pcd_index) + std::string(".pcd"));
             pcl::PCDWriter pcd_writer;
-            cout << "current scan saved to /PCD/" << all_points_dir << endl;
+            std::cout << "current scan saved to /PCD/" << all_points_dir << std::endl;
             pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
             pcl_wait_save->clear();
             scan_wait_num = 0;
@@ -561,9 +561,9 @@ int main(int argc, char** argv)
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
     nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en, true);
     nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
-    nh.param<string>("map_file_path",map_file_path,"");
-    nh.param<string>("common/lid_topic",lid_topic,"/velodyne_points");
-    nh.param<string>("common/imu_topic", imu_topic,"/imu/data");
+    nh.param<std::string>("map_file_path",map_file_path,"");
+    nh.param<std::string>("common/lid_topic",lid_topic,"/velodyne_points");
+    nh.param<std::string>("common/imu_topic", imu_topic,"/imu/data");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
     nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
     nh.param<double>("filter_size_corner",filter_size_corner_min,0.5);
@@ -586,9 +586,9 @@ int main(int argc, char** argv)
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
-    nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
-    nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
-    cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
+    nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
+    std::cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<std::endl;
     
     path.header.stamp    = ros::Time::now();
     path.header.frame_id ="camera_init";
@@ -619,21 +619,21 @@ int main(int argc, char** argv)
     p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
     double epsi[23] = {0.001};
-    fill(epsi, epsi+23, 0.001);
+    std::fill(epsi, epsi+23, 0.001);
 
     /*** debug record ***/
     FILE *fp;
-    string pos_log_dir = root_dir + "/Log/pos_log.txt";
+    std::string pos_log_dir = root_dir + "/Log/pos_log.txt";
     fp = fopen(pos_log_dir.c_str(),"w");
 
-    ofstream fout_pre, fout_out, fout_dbg;
-    fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
-    fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
-    fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
+    std::ofstream fout_pre, fout_out, fout_dbg;
+    fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),std::ios::out);
+    fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),std::ios::out);
+    fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),std::ios::out);
     if (fout_pre && fout_out)
-        cout << "~~~~"<<ROOT_DIR<<" file opened" << endl;
+        std::cout << "~~~~"<<ROOT_DIR<<" file opened" << std::endl;
     else
-        cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
+        std::cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << std::endl;
 
     /*** ROS subscribe initialization ***/
     ros::Subscriber sub_pcl = nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
@@ -716,7 +716,7 @@ int main(int argc, char** argv)
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
             
-            // cout<<"[ mapping ]: In num: "<<feats_undistort->points.size()<<" downsamp "<<feats_down_size<<" Map num: "<<featsFromMapNum<<"effect num:"<<effct_feat_num<<endl;
+            // std::cout<<"[ mapping ]: In num: "<<feats_undistort->points.size()<<" downsamp "<<feats_down_size<<" Map num: "<<featsFromMapNum<<"effect num:"<<effct_feat_num<<std::endl;
 
             /*** ICP and iterated Kalman filter update ***/
             if (feats_down_size < 5)
@@ -774,10 +774,10 @@ int main(int argc, char** argv)
     /* 2. pcd save will largely influence the real-time performences **/
     if (pcl_wait_save->size() > 0 && pcd_save_en)
     {
-        string file_name = string("scans.pcd");
-        string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
+        std::string file_name = std::string("scans.pcd");
+        std::string all_points_dir(std::string(std::string(ROOT_DIR) + "PCD/") + file_name);
         pcl::PCDWriter pcd_writer;
-        cout << "current scan saved to /PCD/" << file_name<<endl;
+        std::cout << "current scan saved to /PCD/" << file_name<<std::endl;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
 

@@ -194,7 +194,7 @@ public:
 
 	// 计算每个特征点的残差及H矩阵
 	void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &feats_down_body,
-					   KD_TREE<PointType> &ikdtree, vector<PointVector> &Nearest_Points, bool extrinsic_est)
+					   KD_TREE<PointType> &ikdtree, std::vector<PointVector> &Nearest_Points, bool extrinsic_est)
 	{
 		int feats_down_size = feats_down_body->points.size();
 		laserCloudOri->clear();
@@ -213,7 +213,7 @@ public:
 			point_world.z = p_global(2);
 			point_world.intensity = point_body.intensity;
 
-			vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+			std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
 			auto &points_near = Nearest_Points[i]; // Nearest_Points[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
 			if (ekfom_data.converge)
 			{
@@ -302,7 +302,7 @@ public:
 	// ESKF
 	void update_iterated_dyn_share_modified(double R, PointCloud::Ptr &feats_down_body,
 											KD_TREE<PointType> &ikdtree, 
-											vector<PointVector> &Nearest_Points, 
+											std::vector<PointVector> &Nearest_Points, 
 											int maximum_iter, 
 											bool extrinsic_est)
 	{

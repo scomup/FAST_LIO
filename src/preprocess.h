@@ -2,7 +2,6 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 
-using namespace std;
 
 #define IS_VALID(a)  ((abs(a)>1e8) ? true : false)
 
