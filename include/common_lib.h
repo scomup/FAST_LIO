@@ -11,10 +11,6 @@
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
 
-using namespace std;
-using namespace Eigen;
-
-#define USE_IKFOM
 
 #define PI_M (3.14159265358)
 #define G_m_s2 (9.81)         // Gravaty const in GuangDong/China
@@ -36,21 +32,13 @@ using namespace Eigen;
 typedef fast_lio::Pose6D Pose6D;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloud;
-typedef vector<PointType, Eigen::aligned_allocator<PointType>>  PointVector;
-typedef Vector3d V3D;
-typedef Matrix3d M3D;
-typedef Vector3f V3F;
-typedef Matrix3f M3F;
+typedef std::vector<PointType, Eigen::aligned_allocator<PointType>>  PointVector;
+typedef Eigen::Vector3d Vec3;
+typedef Eigen::Matrix3d Mat3;
+typedef Eigen::Matrix<double, 4, 4> Mat4;
 
-#define MD(a,b)  Matrix<double, (a), (b)>
-#define VD(a)    Matrix<double, (a), 1>
-#define MF(a,b)  Matrix<float, (a), (b)>
-#define VF(a)    Matrix<float, (a), 1>
-
-M3D Eye3d(M3D::Identity());
-M3F Eye3f(M3F::Identity());
-V3D Zero3d(0, 0, 0);
-V3F Zero3f(0, 0, 0);
+Mat3 Eye3d(Mat3::Identity());
+Vec3 Zero3d(0, 0, 0);
 
 struct MeasureGroup     // Lidar data and imu dates for the curent process
 {
@@ -62,13 +50,13 @@ struct MeasureGroup     // Lidar data and imu dates for the curent process
     double lidar_beg_time;
     double lidar_end_time;
     PointCloud::Ptr lidar;
-    deque<sensor_msgs::Imu::ConstPtr> imu;
+    std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
 
 
 template<typename T>
-auto set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> &g, \
-                const Matrix<T, 3, 1> &v, const Matrix<T, 3, 1> &p, const Matrix<T, 3, 3> &R)
+auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g, \
+                const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R)
 {
     Pose6D rot_kp;
     rot_kp.offset_time = t;
@@ -91,10 +79,10 @@ float calc_dist(PointType p1, PointType p2){
 }
 
 template<typename T>
-bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &threshold)
+bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &threshold)
 {
-    Matrix<T, NUM_MATCH_POINTS, 3> A;
-    Matrix<T, NUM_MATCH_POINTS, 1> b;
+    Eigen::Matrix<T, NUM_MATCH_POINTS, 3> A;
+    Eigen::Matrix<T, NUM_MATCH_POINTS, 1> b;
     A.setZero();
     b.setOnes();
     b *= -1.0f;
@@ -106,7 +94,7 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &
         A(j,2) = point[j].z;
     }
 
-    Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+    Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
 
     T n = normvec.norm();
     pca_result(0) = normvec(0) / n;

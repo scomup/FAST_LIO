@@ -97,9 +97,9 @@ vector<BoxPointType> cub_needrm;
 vector<PointVector>  Nearest_Points; 
 vector<double>       extrinT(3, 0.0);
 vector<double>       extrinR(9, 0.0);
-deque<double>                     time_buffer;
-deque<PointCloud::Ptr>        lidar_buffer;
-deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+std::deque<double>                     time_buffer;
+std::deque<PointCloud::Ptr>        lidar_buffer;
+std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
 PointCloud::Ptr featsFromMap(new PointCloud());
 PointCloud::Ptr feats_undistort(new PointCloud());
@@ -112,11 +112,11 @@ pcl::VoxelGrid<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 
-V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
-V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
-V3D position_last(Zero3d);
-V3D Lidar_T_wrt_IMU(Zero3d);
-M3D Lidar_R_wrt_IMU(Eye3d);
+Vec3 XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
+Vec3 XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
+Vec3 position_last(Zero3d);
+Vec3 Lidar_T_wrt_IMU(Zero3d);
+Mat3 Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
 MeasureGroup Measures;
@@ -143,8 +143,8 @@ void SigHandle(int sig)
 
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
 {
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
+    Vec3 p_body(pi->x, pi->y, pi->z);
+    Vec3 p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -153,10 +153,10 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
 }
 
 template<typename T>
-void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
+void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
 {
-    V3D p_body(pi[0], pi[1], pi[2]);
-    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
+    Vec3 p_body(pi[0], pi[1], pi[2]);
+    Vec3 p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po[0] = p_global(0);
     po[1] = p_global(1);
@@ -165,8 +165,8 @@ void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 
 void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 {
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
+    Vec3 p_body(pi->x, pi->y, pi->z);
+    Vec3 p_global(state_point.rot * (state_point.Rli*p_body + state_point.tli) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -176,8 +176,8 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
 {
-    V3D p_body_lidar(pi->x, pi->y, pi->z);
-    V3D p_body_imu(state_point.Rli*p_body_lidar + state_point.tli);
+    Vec3 p_body_lidar(pi->x, pi->y, pi->z);
+    Vec3 p_body_imu(state_point.Rli*p_body_lidar + state_point.tli);
 
     po->x = p_body_imu(0);
     po->y = p_body_imu(1);
@@ -200,7 +200,7 @@ void lasermap_fov_segment()
     kdtree_delete_counter = 0;
     kdtree_delete_time = 0.0;    
     pointBodyToWorld(XAxisPoint_body, XAxisPoint_world);
-    V3D pos_LiD = pos_lid;
+    Vec3 pos_LiD = pos_lid;
     if (!Localmap_Initialized){
         for (int i = 0; i < 3; i++){
             LocalMap_Points.vertex_min[i] = pos_LiD(i) - cube_len / 2.0;
@@ -613,10 +613,10 @@ int main(int argc, char** argv)
     Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
     Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->set_gyr_cov(Vec3(gyr_cov, gyr_cov, gyr_cov));
+    p_imu->set_acc_cov(Vec3(acc_cov, acc_cov, acc_cov));
+    p_imu->set_gyr_bias_cov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+    p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);

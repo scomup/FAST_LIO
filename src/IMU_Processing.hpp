@@ -40,23 +40,23 @@ class ImuProcess
   
   void Reset();
   void Reset(double start_timestamp, const sensor_msgs::ImuConstPtr &lastimu);
-  void set_extrinsic(const V3D &transl, const M3D &rot);
-  void set_extrinsic(const V3D &transl);
-  void set_extrinsic(const MD(4,4) &T);
-  void set_gyr_cov(const V3D &scaler);
-  void set_acc_cov(const V3D &scaler);
-  void set_gyr_bias_cov(const V3D &b_g);
-  void set_acc_bias_cov(const V3D &b_a);
+  void set_extrinsic(const Vec3 &transl, const Mat3 &rot);
+  void set_extrinsic(const Vec3 &transl);
+  void set_extrinsic(const Mat4 &T);
+  void set_gyr_cov(const Vec3 &scaler);
+  void set_acc_cov(const Vec3 &scaler);
+  void set_gyr_bias_cov(const Vec3 &b_g);
+  void set_acc_bias_cov(const Vec3 &b_a);
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas, esekf &kf_state, PointCloud::Ptr &pcl_un_);
 
   ofstream fout_imu;
-  V3D cov_acc;
-  V3D cov_gyr;
-  V3D cov_acc_scale;
-  V3D cov_gyr_scale;
-  V3D cov_bias_gyr;
-  V3D cov_bias_acc;
+  Vec3 cov_acc;
+  Vec3 cov_gyr;
+  Vec3 cov_acc_scale;
+  Vec3 cov_gyr_scale;
+  Vec3 cov_bias_gyr;
+  Vec3 cov_bias_acc;
   double first_lidar_time;
 
  private:
@@ -65,15 +65,15 @@ class ImuProcess
 
   PointCloud::Ptr cur_pcl_un_;
   sensor_msgs::ImuConstPtr last_imu_;
-  deque<sensor_msgs::ImuConstPtr> v_imu_;
+  std::deque<sensor_msgs::ImuConstPtr> v_imu_;
   vector<Pose6D> IMUpose;
-  vector<M3D>    v_rot_pcl_;
-  M3D Lidar_R_wrt_IMU;
-  V3D Lidar_T_wrt_IMU;
-  V3D mean_acc;
-  V3D mean_gyr;
-  V3D angvel_last;
-  V3D acc_s_last;
+  vector<Mat3>    v_rot_pcl_;
+  Mat3 Lidar_R_wrt_IMU;
+  Vec3 Lidar_T_wrt_IMU;
+  Vec3 mean_acc;
+  Vec3 mean_gyr;
+  Vec3 angvel_last;
+  Vec3 acc_s_last;
   double start_timestamp_;
   double last_lidar_end_time_;
   int    init_iter_num = 1;
@@ -86,12 +86,12 @@ ImuProcess::ImuProcess()
 {
   init_iter_num = 1;
   Q = process_noise_cov();
-  cov_acc       = V3D(0.1, 0.1, 0.1);
-  cov_gyr       = V3D(0.1, 0.1, 0.1);
-  cov_bias_gyr  = V3D(0.0001, 0.0001, 0.0001);
-  cov_bias_acc  = V3D(0.0001, 0.0001, 0.0001);
-  mean_acc      = V3D(0, 0, -1.0);
-  mean_gyr      = V3D(0, 0, 0);
+  cov_acc       = Vec3(0.1, 0.1, 0.1);
+  cov_gyr       = Vec3(0.1, 0.1, 0.1);
+  cov_bias_gyr  = Vec3(0.0001, 0.0001, 0.0001);
+  cov_bias_acc  = Vec3(0.0001, 0.0001, 0.0001);
+  mean_acc      = Vec3(0, 0, -1.0);
+  mean_gyr      = Vec3(0, 0, 0);
   angvel_last     = Zero3d;
   Lidar_T_wrt_IMU = Zero3d;
   Lidar_R_wrt_IMU = Eye3d;
@@ -103,8 +103,8 @@ ImuProcess::~ImuProcess() {}
 void ImuProcess::Reset() 
 {
   // ROS_WARN("Reset ImuProcess");
-  mean_acc      = V3D(0, 0, -1.0);
-  mean_gyr      = V3D(0, 0, 0);
+  mean_acc      = Vec3(0, 0, -1.0);
+  mean_gyr      = Vec3(0, 0, 0);
   angvel_last       = Zero3d;
   imu_need_init_    = true;
   start_timestamp_  = -1;
@@ -115,40 +115,40 @@ void ImuProcess::Reset()
   cur_pcl_un_.reset(new PointCloud());
 }
 
-void ImuProcess::set_extrinsic(const MD(4,4) &T)
+void ImuProcess::set_extrinsic(const Mat4 &T)
 {
   Lidar_T_wrt_IMU = T.block<3,1>(0,3);
   Lidar_R_wrt_IMU = T.block<3,3>(0,0);
 }
 
-void ImuProcess::set_extrinsic(const V3D &transl)
+void ImuProcess::set_extrinsic(const Vec3 &transl)
 {
   Lidar_T_wrt_IMU = transl;
   Lidar_R_wrt_IMU.setIdentity();
 }
 
-void ImuProcess::set_extrinsic(const V3D &transl, const M3D &rot)
+void ImuProcess::set_extrinsic(const Vec3 &transl, const Mat3 &rot)
 {
   Lidar_T_wrt_IMU = transl;
   Lidar_R_wrt_IMU = rot;
 }
 
-void ImuProcess::set_gyr_cov(const V3D &scaler)
+void ImuProcess::set_gyr_cov(const Vec3 &scaler)
 {
   cov_gyr_scale = scaler;
 }
 
-void ImuProcess::set_acc_cov(const V3D &scaler)
+void ImuProcess::set_acc_cov(const Vec3 &scaler)
 {
   cov_acc_scale = scaler;
 }
 
-void ImuProcess::set_gyr_bias_cov(const V3D &b_g)
+void ImuProcess::set_gyr_bias_cov(const Vec3 &b_g)
 {
   cov_bias_gyr = b_g;
 }
 
-void ImuProcess::set_acc_bias_cov(const V3D &b_a)
+void ImuProcess::set_acc_bias_cov(const Vec3 &b_a)
 {
   cov_bias_acc = b_a;
 }
@@ -158,7 +158,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekf &kf_state, int &N)
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
   
-  V3D cur_acc, cur_gyr;
+  Vec3 cur_acc, cur_gyr;
   
   if (b_first_frame_)
   {
@@ -192,13 +192,13 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekf &kf_state, int &N)
   State init_state = kf_state.get_x();
   init_state.grav = - mean_acc / mean_acc.norm() * G_m_s2;
   
-  //state_inout.rot = Eye3d; // SO3Expmap(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
+  //state_inout.rot = Eye3d; // SO3Expmap(mean_acc.cross(Vec3(0, 0, -1 / scale_gravity)));
   init_state.bg  = mean_gyr;
   init_state.tli = Lidar_T_wrt_IMU;
   init_state.Rli = Eigen::Quaterniond(Lidar_R_wrt_IMU);
   kf_state.change_x(init_state);
 
-  Matrix<double, 24, 24> init_P = kf_state.get_P();
+  Eigen::Matrix<double, 24, 24> init_P = kf_state.get_P();
   init_P.setIdentity();
   init_P(6,6) = init_P(7,7) = init_P(8,8) = 0.00001;
   init_P(9,9) = init_P(10,10) = init_P(11,11) = 0.00001;
@@ -232,8 +232,8 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekf &kf_state, PointCl
   IMUpose.push_back(set_pose6d(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
 
   /*** forward propagation at each imu point ***/
-  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
-  M3D R_imu;
+  Vec3 angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
+  Mat3 R_imu;
 
   double dt = 0;
 
@@ -317,11 +317,11 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekf &kf_state, PointCl
        * Note: Compensation direction is INVERSE of Frame's moving direction
        * So if we want to compensate a point at timestamp-i to the frame-e
        * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
-      M3D R_i(R_imu * SO3Expmap(angvel_avr, dt));
+      Mat3 R_i(R_imu * SO3Expmap(angvel_avr, dt));
       
-      V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
-      V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
-      V3D P_compensate = imu_state.Rli.transpose() * (imu_state.rot.transpose() * (R_i * (imu_state.Rli * P_i + imu_state.tli) + T_ei) - imu_state.tli);// not accurate!
+      Vec3 P_i(it_pcl->x, it_pcl->y, it_pcl->z);
+      Vec3 T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
+      Vec3 P_compensate = imu_state.Rli.transpose() * (imu_state.rot.transpose() * (R_i * (imu_state.Rli * P_i + imu_state.tli) + T_ei) - imu_state.tli);// not accurate!
       
       // save Undistorted points and their rotation
       it_pcl->x = P_compensate(0);

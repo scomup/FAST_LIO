@@ -69,9 +69,9 @@ struct InputU
 	Eigen::Vector3d gyro = Eigen::Vector3d(0, 0, 0);
 };
 
-Eigen::Matrix<double, 12, 12> process_noise_cov()
+Eigen::Matrix<double, NZ, NZ> process_noise_cov()
 {
-	Eigen::Matrix<double, 12, 12> Q = Eigen::MatrixXd::Zero(12, 12);
+	Eigen::Matrix<double, NZ, NZ> Q = Eigen::MatrixXd::Zero(NZ, NZ);
 
 	Q.block<3, 3>(L_Nw, L_Nw) = 0.0001 * Eigen::Matrix3d::Identity();
 	Q.block<3, 3>(L_Na, L_Na) = 0.0001 * Eigen::Matrix3d::Identity();
@@ -80,48 +80,50 @@ Eigen::Matrix<double, 12, 12> process_noise_cov()
 	return Q;
 }
 
-// paper (2) f: kinematic model
+// paper (2) f(x, u): kinematic model
+// x: state
+// u: input
 // update state by input(IMU)
-Eigen::Matrix<double, 24, 1> f_func(State state, InputU in)
+Eigen::Matrix<double, SZ, 1> f_func(State state, InputU in)
 {
-	Eigen::Matrix<double, 24, 1> ret = Eigen::Matrix<double, 24, 1>::Zero();
+	Eigen::Matrix<double, SZ, 1> ret = Eigen::Matrix<double, SZ, 1>::Zero();
 	ret.segment<3>(L_P) = state.vel;											 // (7) row 2: velocity
 	ret.segment<3>(L_R) = in.gyro - state.bg;									 // (7) row 1: omega
 	ret.segment<3>(L_V) = state.rot * (in.acc - state.ba) + state.grav; // (7) row 3: acceleration
 	return ret;
 }
 
-// 对应公式(7)的Fx  注意该矩阵没乘dt，没加单位阵
-Eigen::Matrix<double, 24, 24> df_dx_func(State s, InputU in)
+// paper (7) df_fx: 
+// Partial derivatives of the kinematic model(f) with respect to current state.
+Eigen::Matrix<double, SZ, SZ> df_dx_func(State s, InputU in)
 {
-	Eigen::Matrix<double, 24, 24> cov = Eigen::Matrix<double, 24, 24>::Zero();
-	cov.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity(); // 对应公式(7)第2行第3列   I
-	Eigen::Vector3d acc_corrected = in.acc - s.ba;					 // 测量加速度 = a_m - bias
-
-	cov.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected); // 对应公式(7)第3行第1列
-	cov.block<3, 3>(L_V, L_Ba) = -s.rot;							 // 对应公式(7)第3行第5列
-
-	cov.template block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity();	// 对应公式(7)第3行第6列   I
-	cov.template block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity(); // 对应公式(7)第1行第4列 (简化为-I)
-	return cov;
+	Eigen::Matrix<double, SZ, SZ> Cov = Eigen::Matrix<double, SZ, SZ>::Zero();
+	Cov.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity(); // paper (7) Fx(2,3)
+	Eigen::Vector3d acc_corrected = in.acc - s.ba;					
+	Cov.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected); // paper(7) Fx(3,1)
+	Cov.block<3, 3>(L_V, L_Ba) = -s.rot;							 // paper(7) Fx(3,5)
+	Cov.template block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity();	// paper(7) Fx(3,6)
+	Cov.template block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity(); // paper(7) Fx(1,4)
+	return Cov;
 }
 
-// 对应公式(7)的Fw  注意该矩阵没乘dt
-Eigen::Matrix<double, 24, 12> df_dw_func(State s, InputU in)
+// paper (7) df_fw: 
+// Partial derivatives of the kinematic model(f) with respect to noise.
+Eigen::Matrix<double, SZ, NZ> df_dw_func(State s, InputU in)
 {
-	Eigen::Matrix<double, 24, 12> cov = Eigen::Matrix<double, 24, 12>::Zero();
-	cov.block<3, 3>(L_V, L_Na) = -s.rot;				// 对应公式(7)第3行第2列  -R
-	cov.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity();	// 对应公式(7)第1行第1列  -A(w dt)简化为-I
-	cov.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity(); // 对应公式(7)第4行第3列  I
-	cov.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity(); // 对应公式(7)第5行第4列  I
-	return cov;
+	Eigen::Matrix<double, SZ, NZ> Cov = Eigen::Matrix<double, SZ, NZ>::Zero();
+	Cov.block<3, 3>(L_V, L_Na) = -s.rot;						//  paper (7) Fw(3,2)
+	Cov.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity();	//  paper (7) Fw(1,1)
+	Cov.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity(); //  paper (7) Fw(4,3) 
+	Cov.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity(); //  paper (7) Fw(5,4)
+	return Cov;
 }
 
 class esekf
 {
 public:
-	typedef Matrix<double, 24, 24> cov;				// 24X24的协方差矩阵
-	typedef Matrix<double, 24, 1> vectorized_state; // 24X1的向量
+	typedef Eigen::Matrix<double, SZ, SZ> Cov;				// 24X24的协方差矩阵
+	typedef Eigen::Matrix<double, SZ, 1> StateVec; // 24X1的向量
 
 	esekf(){};
 	~esekf(){};
@@ -131,7 +133,7 @@ public:
 		return x_;
 	}
 
-	cov get_P()
+	Cov get_P()
 	{
 		return P_;
 	}
@@ -141,13 +143,13 @@ public:
 		x_ = input_state;
 	}
 
-	void change_P(cov &input_cov)
+	void change_P(Cov &input_cov)
 	{
 		P_ = input_cov;
 	}
 
 	// 广义加法  公式(4)
-	State boxplus(State x, Eigen::Matrix<double, 24, 1> f)
+	State boxplus(State x, Eigen::Matrix<double, SZ, 1> f)
 	{
 		State x_r;
 		x_r.pos = x.pos + f.segment<3>(L_P);
@@ -162,9 +164,9 @@ public:
 	}
 
 	// 广义减法
-	vectorized_state boxminus(State x1, State x2)
+	StateVec boxminus(State x1, State x2)
 	{
-		vectorized_state x_r = vectorized_state::Zero();
+		StateVec x_r = StateVec::Zero();
 		x_r.segment<3>(L_P) = x1.pos - x2.pos;
 		x_r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * x1.rot);
 		x_r.segment<3>(L_Rli) = SO3Logmap(x2.Rli.transpose() * x1.Rli);
@@ -177,14 +179,14 @@ public:
 	}
 
 	// Forward Propagation  III-C
-	void predict(double &dt, Eigen::Matrix<double, 12, 12> &Q, const InputU &i_in)
+	void predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in)
 	{
-		Eigen::Matrix<double, 24, 1> f = f_func(x_, i_in);		  // paper (3) f
-		Eigen::Matrix<double, 24, 24> f_x = df_dx_func(x_, i_in); // paper (7) df/dx
-		Eigen::Matrix<double, 24, 12> f_w = df_dw_func(x_, i_in); // paper (7) df/dw
+		Eigen::Matrix<double, SZ, 1> f = f_func(x_, i_in);		  // paper (3) f
+		Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, i_in); // paper (7) df/dx
+		Eigen::Matrix<double, SZ, NZ> f_w = df_dw_func(x_, i_in); // paper (7) df/dw
 		x_ = boxplus(x_, f * dt); // 前向传播 公式(4)
 
-		f_x = Matrix<double, 24, 24>::Identity() + f_x * dt; // 之前Fx矩阵里的项没加单位阵，没乘dt   这里补上
+		f_x = Eigen::Matrix<double, SZ, SZ>::Identity() + f_x * dt; // 之前Fx矩阵里的项没加单位阵，没乘dt   这里补上
 
 		P_ = (f_x)*P_ * (f_x).transpose() + (dt * f_w) * Q * (dt * f_w).transpose(); // 传播协方差矩阵，即公式(8)
 	}
@@ -203,9 +205,9 @@ public:
 			PointType &point_body = feats_down_body->points[i];
 			PointType point_world;
 
-			V3D p_body(point_body.x, point_body.y, point_body.z);
+			Vec3 p_body(point_body.x, point_body.y, point_body.z);
 			// 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
-			V3D p_global(x_.rot * (x_.Rli * p_body + x_.tli) + x_.pos);
+			Vec3 p_global(x_.rot * (x_.Rli * p_body + x_.tli) + x_.pos);
 			point_world.x = p_global(0);
 			point_world.y = p_global(1);
 			point_world.z = p_global(2);
@@ -224,7 +226,7 @@ public:
 			if (!point_selected_surf[i])
 				continue; // 如果该点不满足条件  不进行下面步骤
 
-			Matrix<float, 4, 1> pabcd;		// 平面点信息
+			Eigen::Matrix<float, 4, 1> pabcd;		// 平面点信息
 			point_selected_surf[i] = false; // 将该点设置为无效点，用来判断是否满足条件
 			// 拟合平面方程ax+by+cz+d=0并求解点到平面距离
 			if (esti_plane(pabcd, points_near, 0.1f))
@@ -262,33 +264,33 @@ public:
 		}
 
 		// 雅可比矩阵H和残差向量的计算
-		ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 24);
+		ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, SZ);
 		ekfom_data.h.resize(effct_feat_num);
 
 		for (int i = 0; i < effct_feat_num; i++)
 		{
-			V3D point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
-			M3D point_crossmat;
+			Vec3 point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
+			Mat3 point_crossmat;
 			point_crossmat << SKEW_SYM_MATRX(point_);
-			V3D point_I_ = x_.Rli * point_ + x_.tli;
-			M3D point_I_crossmat;
+			Vec3 point_I_ = x_.Rli * point_ + x_.tli;
+			Mat3 point_I_crossmat;
 			point_I_crossmat << SKEW_SYM_MATRX(point_I_);
 
 			// 得到对应的平面的法向量
 			const PointType &norm_p = corr_normvect->points[i];
-			V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+			Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
 			// 计算雅可比矩阵H
-			V3D C(x_.rot.transpose() * norm_vec);
-			V3D A(point_I_crossmat * C);
+			Vec3 C(x_.rot.transpose() * norm_vec);
+			Vec3 A(point_I_crossmat * C);
 			if (extrinsic_est)
 			{
-				V3D B(point_crossmat * x_.Rli.transpose() * C);
-				ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+				Vec3 B(point_crossmat * x_.Rli.transpose() * C);
+				ekfom_data.h_x.block<1, NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
 			}
 			else
 			{
-				ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+				ekfom_data.h_x.block<1, NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
 			}
 
 			// 残差：点面距离
@@ -311,9 +313,9 @@ public:
 		dyn_share.converge = true;
 		int t = 0;
 		State x_propagated = x_; // 这里的x_和P_分别是经过正向传播后的状态量和协方差矩阵，因为会先调用predict函数再调用这个函数
-		cov P_propagated = P_;
+		Cov P_propagated = P_;
 
-		vectorized_state dx_new = vectorized_state::Zero(); // 24X1的向量
+		StateVec dx_new = StateVec::Zero(); // 24X1的向量
 
 		for (int i = -1; i < maximum_iter; i++) // maximum_iter是卡尔曼滤波的最大迭代次数
 		{
@@ -326,18 +328,18 @@ public:
 				continue;
 			}
 
-			vectorized_state dx;
+			StateVec dx;
 			dx_new = boxminus(x_, x_propagated); // 公式(18)中的 x^k - x^
 
 			auto H = dyn_share.h_x;
 			Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
 			K = (H.transpose() * H / R + P_.inverse()).inverse() * H.transpose() / R;							 // 卡尔曼增益  这里R视为常数
-			Matrix<double, 24, 1> dx_ = K * dyn_share.h + (K * H - Matrix<double, 24, 24>::Identity()) * dx_new; // 公式(18)
+			Eigen::Matrix<double, SZ, 1> dx_ = K * dyn_share.h + (K * H - Eigen::Matrix<double, SZ, SZ>::Identity()) * dx_new; // 公式(18)
 
 			x_ = boxplus(x_, dx_); // 公式(18)
 
 			dyn_share.converge = true;
-			for (int i = 0; i < 24; i++)
+			for (int i = 0; i < SZ; i++)
 			{
 				if (std::fabs(dx_[i]) > epsi) // 如果dx>epsi 认为没有收敛
 				{
@@ -356,7 +358,7 @@ public:
 
 			if (t > 1 || i == maximum_iter - 1)
 			{
-				P_ = (Matrix<double, 24, 24>::Identity() - K * H) * P_; // 公式(19)
+				P_ = (Eigen::Matrix<double, SZ, SZ>::Identity() - K * H) * P_; // 公式(19)
 				return;
 			}
 		}
@@ -364,7 +366,7 @@ public:
 
 private:
 	State x_;
-	cov P_ = cov::Identity();
+	Cov P_ = Cov::Identity();
 };
 
 #endif //  ESEKFOM_EKF_HPP1
