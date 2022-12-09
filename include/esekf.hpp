@@ -51,11 +51,11 @@ namespace ESEKF
   // state
   struct State
   {
-    Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0);
-    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d Rli = Eigen::Matrix3d::Identity();
-    Eigen::Vector3d tli = Eigen::Vector3d(0, 0, 0);
-    Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0);
+    Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0); // imu postion in world frame
+    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity(); // imu rotation in lidar frame
+    Eigen::Matrix3d Rli = Eigen::Matrix3d::Identity(); // rotation from imu to lidar
+    Eigen::Vector3d tli = Eigen::Vector3d(0, 0, 0); // translation from imu to lidar
+    Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0); 
     Eigen::Vector3d bg = Eigen::Vector3d(0, 0, 0);
     Eigen::Vector3d ba = Eigen::Vector3d(0, 0, 0);
     Eigen::Vector3d grav = Eigen::Vector3d(0, 0, -G_m_s2);
