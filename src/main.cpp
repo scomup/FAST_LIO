@@ -89,8 +89,6 @@ int main(int argc, char **argv)
 
       p_imu->Process(Measures, kf, feats_undistort); // deskew lidar points. by backward propagation
 
-      state_point = kf.get_x();
-      pos_lid = state_point.pos + state_point.rot * state_point.tli; // Lidar point in global frame.
 
       if (feats_undistort->empty() || (feats_undistort == NULL))
       {
@@ -99,7 +97,9 @@ int main(int argc, char **argv)
       }
 
       /*** Segment the map in lidar FOV ***/
-      lasermap_fov_segment();
+      state_point = kf.get_x();
+      Vec3 pos_lid = state_point.pos + state_point.rot * state_point.tli; // Lidar point in global frame.
+      lasermap_fov_segment(pos_lid);
 
       /*** downsample the feature points in a scan ***/
       downSizeFilterSurf.setInputCloud(feats_undistort);
@@ -110,7 +110,7 @@ int main(int argc, char **argv)
         continue;
       }
 
-      feats_down_size = feats_down_body->points.size();
+      int feats_down_size = feats_down_body->points.size();
 
       /*** ICP and iterated Kalman filter update ***/
       if (feats_down_size < 5)
@@ -119,23 +119,8 @@ int main(int argc, char **argv)
         continue;
       }
 
-      feats_down_world->resize(feats_down_size);
-      pointSearchInd_surf.resize(feats_down_size);
-      Nearest_Points.resize(feats_down_size);
-
-
       /*** iterated state estimation ***/
-      
-      kf.iterated_update(feats_down_body, ikdtree, Nearest_Points);
-
-      state_point = kf.get_x();
-      Eigen::Quaterniond q = Eigen::Quaterniond(state_point.rot);
-      geoQuat.x = q.x();
-      geoQuat.y = q.y();
-      geoQuat.z = q.z();
-      geoQuat.w = q.w();
-
-      double t_update_end = omp_get_wtime();
+      kf.iterated_update(feats_down_body, ikdtree, neighbor_array);
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped, kf);
@@ -151,8 +136,6 @@ int main(int argc, char **argv)
     status = ros::ok();
     rate.sleep();
   }
-
-
 
   return 0;
 }

@@ -201,7 +201,7 @@ namespace ESEKF
 
     // 计算每个特征点的残差及H矩阵
     void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &feats_down_body,
-                       KD_TREE<PointType> &ikdtree, std::vector<PointVector> &Nearest_Points, bool extrinsic_est)
+                       KD_TREE<PointType> &ikdtree, std::vector<PointVector> &neighborhoods, bool extrinsic_est)
     {
       int feats_down_size = feats_down_body->points.size();
       laserCloudOri->clear();
@@ -221,7 +221,7 @@ namespace ESEKF
         point_world.intensity = point_body.intensity;
 
         std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-        auto &points_near = Nearest_Points[i]; // Nearest_Points[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
+        auto &points_near = neighborhoods[i]; // neighborhoods[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
         if (ekfom_data.converge)
         {
           // 寻找point_world的最近邻的平面点
@@ -308,9 +308,10 @@ namespace ESEKF
     // ESKF
     void iterated_update(PointCloud::Ptr &feats_down_body,
                          KD_TREE<PointType> &ikdtree,
-                         std::vector<PointVector> &Nearest_Points)
+                         std::vector<PointVector> &neighborhoods)
     {
       normvec->resize(int(feats_down_body->points.size()));
+      neighborhoods.resize(int(feats_down_body->points.size()));
 
       dyn_share_datastruct dyn_share;
       dyn_share.valid = true;
@@ -325,7 +326,7 @@ namespace ESEKF
       {
         dyn_share.valid = true;
         // 计算雅克比，也就是点面残差的导数 H(代码里是h_x)
-        h_share_model(dyn_share, feats_down_body, ikdtree, Nearest_Points, extrinsic_est_);
+        h_share_model(dyn_share, feats_down_body, ikdtree, neighborhoods, extrinsic_est_);
 
         if (!dyn_share.valid)
         {

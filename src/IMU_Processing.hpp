@@ -50,7 +50,6 @@ class ImuProcess
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas, ESEKF::esekf &kf_state, PointCloud::Ptr &pcl_un_);
 
-  std::ofstream fout_imu;
   Vec3 cov_acc;
   Vec3 cov_gyr;
   Vec3 cov_acc_scale;
@@ -252,7 +251,6 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, ESEKF::esekf &kf_state, 
                 0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
                 0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
 
-    // fout_imu << setw(10) << head->header.stamp.toSec() - first_lidar_time << " " << angvel_avr.transpose() << " " << acc_avr.transpose() << std::endl;
 
     acc_avr     = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
@@ -359,9 +357,6 @@ void ImuProcess::Process(const MeasureGroup &meas,  ESEKF::esekf &kf_state, Poin
       cov_acc = cov_acc_scale;
       cov_gyr = cov_gyr_scale;
       ROS_INFO("IMU Initial Done");
-      // ROS_INFO("IMU Initial Done: Gravity: %.4f %.4f %.4f %.4f; state.bias_g: %.4f %.4f %.4f; acc covarience: %.8f %.8f %.8f; gry covarience: %.8f %.8f %.8f",\
-      //          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2], mean_acc.norm(), cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
-      fout_imu.open(DEBUG_FILE_DIR("imu.txt"),std::ios::out);
     }
 
     return;

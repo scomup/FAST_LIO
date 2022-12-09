@@ -62,8 +62,7 @@
 
 /*** Time Log Variables ***/
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
-double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
-int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
+int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0;
 bool pcd_save_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
 
@@ -73,41 +72,31 @@ const float MOV_THRESHOLD = 1.5f;
 std::mutex mtx_buffer;
 std::condition_variable sig_buffer;
 
-std::string root_dir = ROOT_DIR;
-std::string lid_topic, imu_topic;
-
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double filter_size_map_min = 0;
 double cube_len = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
-int iterCount = 0, feats_down_size = 0, laserCloudValidNum = 0,  pcd_index = 0;
+int iterCount = 0, laserCloudValidNum = 0,  pcd_index = 0;
 bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 
-std::vector<std::vector<int>> pointSearchInd_surf;
 std::vector<BoxPointType> cub_needrm;
-std::vector<PointVector> Nearest_Points;
+std::vector<PointVector> neighbor_array;
 std::deque<double> time_buffer;
 std::deque<PointCloud::Ptr> lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
 
-PointCloud::Ptr feats_down_world(new PointCloud());
-
 KD_TREE<PointType> ikdtree;
 
-Vec3 XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
-Vec3 XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
 Vec3 position_last(Zero3d);
 
 /*** EKF inputs and output ***/
 ESEKF::State state_point;
-Eigen::Vector3d pos_lid;
+//Eigen::Vector3d pos_lid;
 
 nav_msgs::Odometry odomAftMapped;
-geometry_msgs::Quaternion geoQuat;
-geometry_msgs::PoseStamped msg_body_pose;
 
 std::shared_ptr<Preprocess> p_pre(new Preprocess());
 std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
@@ -115,10 +104,7 @@ std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
 BoxPointType LocalMap_Points;
 bool Localmap_Initialized = false;
 
-int process_increments = 0;
 
-double timediff_lidar_wrt_imu = 0.0;
-bool timediff_set_flg = false;
 
 void SigHandle(int sig)
 {
@@ -171,18 +157,10 @@ void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po)
   po->intensity = pi->intensity;
 }
 
-void points_cache_collect()
-{
-  PointVector points_history;
-  ikdtree.acquire_removed_points(points_history);
-}
-
-void lasermap_fov_segment()
+void lasermap_fov_segment(Vec3& pos_LiD)
 {
   cub_needrm.clear();
-  kdtree_delete_counter = 0;
-  pointBodyToWorld(XAxisPoint_body, XAxisPoint_world);
-  Vec3 pos_LiD = pos_lid;
+  
   if (!Localmap_Initialized)
   {
     for (int i = 0; i < 3; i++)
@@ -227,17 +205,14 @@ void lasermap_fov_segment()
   }
   LocalMap_Points = New_LocalMap_Points;
 
-  points_cache_collect();
-  double delete_begin = omp_get_wtime();
   if (cub_needrm.size() > 0)
-    kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
+    ikdtree.Delete_Point_Boxes(cub_needrm);
 }
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   mtx_buffer.lock();
   scan_count++;
-  double preprocess_start_time = omp_get_wtime();
   if (msg->header.stamp.toSec() < last_timestamp_lidar)
   {
     ROS_ERROR("lidar loop back, clear buffer");
@@ -249,7 +224,6 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(msg->header.stamp.toSec());
   last_timestamp_lidar = msg->header.stamp.toSec();
-  s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
   mtx_buffer.unlock();
   sig_buffer.notify_all();
 }
@@ -342,11 +316,12 @@ bool init_map(const PointCloud::Ptr& cloud)
   /*** initialize the map kdtree ***/
   if (ikdtree.Root_Node == nullptr)
   {
-    feats_down_size = cloud->points.size();
+    
+    int feats_down_size = cloud->points.size();
     if (feats_down_size > 5)
     {
+      PointCloud::Ptr feats_down_world(new PointCloud(feats_down_size, 1));
       ikdtree.set_downsample_param(filter_size_map_min);
-      feats_down_world->resize(feats_down_size);
       for (int i = 0; i < feats_down_size; i++)
       {
         pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
@@ -362,16 +337,21 @@ void map_incremental(PointCloud::Ptr cloud)
 {
   PointVector PointToAdd;
   PointVector PointNoNeedDownsample;
+  int feats_down_size = cloud->points.size();
   PointToAdd.reserve(feats_down_size);
   PointNoNeedDownsample.reserve(feats_down_size);
+
+  PointCloud::Ptr feats_down_world(new PointCloud(feats_down_size, 1));
+
+
   for (int i = 0; i < feats_down_size; i++)
   {
     /* transform to world frame */
     pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
     /* decide if need add to map */
-    if (!Nearest_Points[i].empty() && flg_EKF_inited)
+    if (!neighbor_array[i].empty() && flg_EKF_inited)
     {
-      const PointVector &points_near = Nearest_Points[i];
+      const PointVector &points_near = neighbor_array[i];
       bool need_add = true;
       BoxPointType Box_of_Point;
       PointType downsample_result, mid_point;
@@ -435,10 +415,11 @@ void set_posestamp(T &out)
   out.pose.position.x = state_point.pos(0);
   out.pose.position.y = state_point.pos(1);
   out.pose.position.z = state_point.pos(2);
-  out.pose.orientation.x = geoQuat.x;
-  out.pose.orientation.y = geoQuat.y;
-  out.pose.orientation.z = geoQuat.z;
-  out.pose.orientation.w = geoQuat.w;
+  Eigen::Quaterniond q = Eigen::Quaterniond(state_point.rot);
+  out.pose.orientation.x = q.x();
+  out.pose.orientation.y = q.y();
+  out.pose.orientation.z = q.z();
+  out.pose.orientation.w = q.w();
 }
 
 void publish_odometry(const ros::Publisher &pubOdomAftMapped, const ESEKF::esekf& kf)
