@@ -60,13 +60,7 @@
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
 
-/*** Time Log Variables ***/
-double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
-int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0;
-bool pcd_save_en = false, extrinsic_est_en = true, path_en = true;
-/**************************/
 
-float det_range = 300.0f;
 const float MOV_THRESHOLD = 1.5f;
 
 std::mutex mtx_buffer;
@@ -88,12 +82,12 @@ std::deque<PointCloud::Ptr> lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
 
-KD_TREE<PointType> ikdtree;
+KD_TREE<PointType> ikdtree_;
 
 Vec3 position_last(Zero3d);
 
 /*** EKF inputs and output ***/
-ESEKF::State state_point;
+ESEKF::State state_;
 //Eigen::Vector3d pos_lid;
 
 nav_msgs::Odometry odomAftMapped;
@@ -116,7 +110,7 @@ void SigHandle(int sig)
 void pointBodyToWorld(PointType const *const pi, PointType *const po)
 {
   Vec3 p_body(pi->x, pi->y, pi->z);
-  Vec3 p_global(state_point.rot * (state_point.Rli * p_body + state_point.tli) + state_point.pos);
+  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
 
   po->x = p_global(0);
   po->y = p_global(1);
@@ -128,7 +122,7 @@ template <typename T>
 void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
 {
   Vec3 p_body(pi[0], pi[1], pi[2]);
-  Vec3 p_global(state_point.rot * (state_point.Rli * p_body + state_point.tli) + state_point.pos);
+  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
 
   po[0] = p_global(0);
   po[1] = p_global(1);
@@ -138,7 +132,7 @@ void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &
 void RGBpointBodyToWorld(PointType const *const pi, PointType *const po)
 {
   Vec3 p_body(pi->x, pi->y, pi->z);
-  Vec3 p_global(state_point.rot * (state_point.Rli * p_body + state_point.tli) + state_point.pos);
+  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
 
   po->x = p_global(0);
   po->y = p_global(1);
@@ -149,7 +143,7 @@ void RGBpointBodyToWorld(PointType const *const pi, PointType *const po)
 void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po)
 {
   Vec3 p_body_lidar(pi->x, pi->y, pi->z);
-  Vec3 p_body_imu(state_point.Rli * p_body_lidar + state_point.tli);
+  Vec3 p_body_imu(state_.Rli * p_body_lidar + state_.tli);
 
   po->x = p_body_imu(0);
   po->y = p_body_imu(1);
@@ -159,54 +153,8 @@ void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po)
 
 void lasermap_fov_segment(Vec3& pos_LiD)
 {
-  cub_needrm.clear();
-  
-  if (!Localmap_Initialized)
-  {
-    for (int i = 0; i < 3; i++)
-    {
-      LocalMap_Points.vertex_min[i] = pos_LiD(i) - cube_len / 2.0;
-      LocalMap_Points.vertex_max[i] = pos_LiD(i) + cube_len / 2.0;
-    }
-    Localmap_Initialized = true;
-    return;
-  }
-  float dist_to_map_edge[3][2];
-  bool need_move = false;
-  for (int i = 0; i < 3; i++)
-  {
-    dist_to_map_edge[i][0] = fabs(pos_LiD(i) - LocalMap_Points.vertex_min[i]);
-    dist_to_map_edge[i][1] = fabs(pos_LiD(i) - LocalMap_Points.vertex_max[i]);
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * det_range || dist_to_map_edge[i][1] <= MOV_THRESHOLD * det_range)
-      need_move = true;
-  }
-  if (!need_move)
-    return;
-  BoxPointType New_LocalMap_Points, tmp_boxpoints;
-  New_LocalMap_Points = LocalMap_Points;
-  float mov_dist = std::max((cube_len - 2.0 * MOV_THRESHOLD * det_range) * 0.5 * 0.9, double(det_range * (MOV_THRESHOLD - 1)));
-  for (int i = 0; i < 3; i++)
-  {
-    tmp_boxpoints = LocalMap_Points;
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * det_range)
-    {
-      New_LocalMap_Points.vertex_max[i] -= mov_dist;
-      New_LocalMap_Points.vertex_min[i] -= mov_dist;
-      tmp_boxpoints.vertex_min[i] = LocalMap_Points.vertex_max[i] - mov_dist;
-      cub_needrm.push_back(tmp_boxpoints);
-    }
-    else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * det_range)
-    {
-      New_LocalMap_Points.vertex_max[i] += mov_dist;
-      New_LocalMap_Points.vertex_min[i] += mov_dist;
-      tmp_boxpoints.vertex_max[i] = LocalMap_Points.vertex_min[i] + mov_dist;
-      cub_needrm.push_back(tmp_boxpoints);
-    }
-  }
-  LocalMap_Points = New_LocalMap_Points;
-
-  if (cub_needrm.size() > 0)
-    ikdtree.Delete_Point_Boxes(cub_needrm);
+  //Removes the point far from the current position.
+  return;
 }
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -314,19 +262,19 @@ bool sync_packages(MeasureGroup &meas)
 bool init_map(const PointCloud::Ptr& cloud)
 {
   /*** initialize the map kdtree ***/
-  if (ikdtree.Root_Node == nullptr)
+  if (ikdtree_.Root_Node == nullptr)
   {
     
     int feats_down_size = cloud->points.size();
     if (feats_down_size > 5)
     {
       PointCloud::Ptr feats_down_world(new PointCloud(feats_down_size, 1));
-      ikdtree.set_downsample_param(filter_size_map_min);
+      ikdtree_.set_downsample_param(filter_size_map_min);
       for (int i = 0; i < feats_down_size; i++)
       {
         pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
       }
-      ikdtree.Build(feats_down_world->points);
+      ikdtree_.Build(feats_down_world->points);
       return true;
     }
   }
@@ -383,10 +331,8 @@ void map_incremental(PointCloud::Ptr cloud)
     }
   }
 
-  double st_time = omp_get_wtime();
-  add_point_size = ikdtree.Add_Points(PointToAdd, true);
-  ikdtree.Add_Points(PointNoNeedDownsample, false);
-  add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
+  ikdtree_.Add_Points(PointToAdd, true);
+  ikdtree_.Add_Points(PointNoNeedDownsample, false);
 }
 
 void publish_frame_world(const ros::Publisher &pubLaserCloudFull, PointCloud::Ptr& cloud)
@@ -412,10 +358,10 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull, PointCloud::Pt
 template <typename T>
 void set_posestamp(T &out)
 {
-  out.pose.position.x = state_point.pos(0);
-  out.pose.position.y = state_point.pos(1);
-  out.pose.position.z = state_point.pos(2);
-  Eigen::Quaterniond q = Eigen::Quaterniond(state_point.rot);
+  out.pose.position.x = state_.pos(0);
+  out.pose.position.y = state_.pos(1);
+  out.pose.position.z = state_.pos(2);
+  Eigen::Quaterniond q = Eigen::Quaterniond(state_.rot);
   out.pose.orientation.x = q.x();
   out.pose.orientation.y = q.y();
   out.pose.orientation.z = q.z();

@@ -11,6 +11,8 @@ int main(int argc, char **argv)
   bool scan_pub_en = false;
   int max_iteration;
   double filter_size_surf_min = 0;
+  bool extrinsic_est_en = true;
+
   std::vector<double> extrinT(3, 0);
   std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
@@ -19,7 +21,6 @@ int main(int argc, char **argv)
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
   nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
   nh.param<double>("cube_side_length", cube_len, 200);
-  nh.param<float>("mapping/det_range", det_range, 300.f);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -97,9 +98,9 @@ int main(int argc, char **argv)
       }
 
       /*** Segment the map in lidar FOV ***/
-      state_point = kf.get_x();
-      Vec3 pos_lid = state_point.pos + state_point.rot * state_point.tli; // Lidar point in global frame.
-      lasermap_fov_segment(pos_lid);
+      state_ = kf.get_x();
+      //Vec3 pos_lid = state_.pos + state_.rot * state_.tli; // Lidar point in global frame.
+      //lasermap_fov_segment(pos_lid);
 
       /*** downsample the feature points in a scan ***/
       downSizeFilterSurf.setInputCloud(feats_undistort);
@@ -120,7 +121,7 @@ int main(int argc, char **argv)
       }
 
       /*** iterated state estimation ***/
-      kf.iterated_update(feats_down_body, ikdtree, neighbor_array);
+      kf.iterated_update(feats_down_body, ikdtree_, neighbor_array);
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped, kf);
