@@ -66,7 +66,7 @@
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
 int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-bool pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool pcd_save_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -78,17 +78,16 @@ std::mutex mtx_buffer;
 std::condition_variable sig_buffer;
 
 std::string root_dir = ROOT_DIR;
-std::string map_file_path, lid_topic, imu_topic;
+std::string lid_topic, imu_topic;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
-double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
+double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0;
+double cube_len = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
-int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
+int iterCount = 0, feats_down_size = 0, laserCloudValidNum = 0,  pcd_index = 0;
 bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
-bool scan_pub_en = false, scan_body_pub_en = false;
 
 std::vector<std::vector<int>> pointSearchInd_surf;
 std::vector<BoxPointType> cub_needrm;
@@ -99,14 +98,11 @@ std::deque<double> time_buffer;
 std::deque<PointCloud::Ptr> lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
-PointCloud::Ptr featsFromMap(new PointCloud());
 PointCloud::Ptr feats_undistort(new PointCloud());
 PointCloud::Ptr feats_down_body(new PointCloud());
 PointCloud::Ptr feats_down_world(new PointCloud());
-PointCloud::Ptr _featsArray;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
-pcl::VoxelGrid<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 
@@ -117,21 +113,15 @@ Vec3 Lidar_T_wrt_IMU(Zero3d);
 Mat3 Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
-MeasureGroup Measures;
-ESEKF::esekf kf;
 ESEKF::State state_point;
 Eigen::Vector3d pos_lid;
 
-nav_msgs::Path path;
 nav_msgs::Odometry odomAftMapped;
 geometry_msgs::Quaternion geoQuat;
 geometry_msgs::PoseStamped msg_body_pose;
 
 std::shared_ptr<Preprocess> p_pre(new Preprocess());
 std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
-
-PointCloud::Ptr pcl_wait_pub(new PointCloud(500000, 1));
-PointCloud::Ptr pcl_wait_save(new PointCloud());
 
 BoxPointType LocalMap_Points;
 bool Localmap_Initialized = false;
@@ -281,11 +271,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
   // std::cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<std::endl;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
 
-  if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
-  {
-    msg->header.stamp =
-        ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
-  }
 
   msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() - time_diff_lidar_to_imu);
 
@@ -436,14 +421,6 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
   publish_count -= PUBFRAME_PERIOD;
 }
 
-void publish_map(const ros::Publisher &pubLaserCloudMap)
-{
-  sensor_msgs::PointCloud2 laserCloudMap;
-  pcl::toROSMsg(*featsFromMap, laserCloudMap);
-  laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
-  laserCloudMap.header.frame_id = "camera_init";
-  pubLaserCloudMap.publish(laserCloudMap);
-}
 
 template <typename T>
 void set_posestamp(T &out)
@@ -457,7 +434,7 @@ void set_posestamp(T &out)
   out.pose.orientation.w = geoQuat.w;
 }
 
-void publish_odometry(const ros::Publisher &pubOdomAftMapped)
+void publish_odometry(const ros::Publisher &pubOdomAftMapped, const ESEKF::esekf& kf)
 {
   odomAftMapped.header.frame_id = "camera_init";
   odomAftMapped.child_frame_id = "body";

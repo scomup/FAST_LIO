@@ -166,12 +166,12 @@ namespace ESEKF
       
     }
 
-    State get_x()
+    State get_x() const
     {
       return x_;
     }
 
-    Cov get_P()
+    Cov get_P() const 
     {
       return P_;
     }
