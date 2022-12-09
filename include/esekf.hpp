@@ -52,9 +52,9 @@ namespace ESEKF
   struct State
   {
     Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0); // imu postion in world frame
-    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity(); // imu rotation in lidar frame
-    Eigen::Matrix3d Rli = Eigen::Matrix3d::Identity(); // rotation from imu to lidar
-    Eigen::Vector3d tli = Eigen::Vector3d(0, 0, 0); // translation from imu to lidar
+    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity(); // imu rotation in world frame
+    Eigen::Matrix3d Ril = Eigen::Matrix3d::Identity(); // rotation from lidar to imu
+    Eigen::Vector3d til = Eigen::Vector3d(0, 0, 0); // translation from lidar to imu
     Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0); 
     Eigen::Vector3d bg = Eigen::Vector3d(0, 0, 0);
     Eigen::Vector3d ba = Eigen::Vector3d(0, 0, 0);
@@ -66,8 +66,8 @@ namespace ESEKF
       State r;
       r.pos = this->pos + f.segment<3>(L_P);
       r.rot = this->rot * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_R)));
-      r.Rli = this->Rli * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_Rli)));
-      r.tli = this->tli + f.segment<3>(L_Tli);
+      r.Ril = this->Ril * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_Rli)));
+      r.til = this->til + f.segment<3>(L_Tli);
       r.vel = this->vel + f.segment<3>(L_V);
       r.bg = this->bg + f.segment<3>(L_Bw);
       r.ba = this->ba + f.segment<3>(L_Ba);
@@ -81,8 +81,8 @@ namespace ESEKF
       Eigen::Matrix<double, SZ, 1> r;
       r.segment<3>(L_P) = this->pos - x2.pos;
       r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * this->rot);
-      r.segment<3>(L_Rli) = SO3Logmap(x2.Rli.transpose() * this->Rli);
-      r.segment<3>(L_Tli) = this->tli - x2.tli;
+      r.segment<3>(L_Rli) = SO3Logmap(x2.Ril.transpose() * this->Ril);
+      r.segment<3>(L_Tli) = this->til - x2.til;
       r.segment<3>(L_V) = this->vel - x2.vel;
       r.segment<3>(L_Bw) = this->bg - x2.bg;
       r.segment<3>(L_Ba) = this->ba - x2.ba;
@@ -203,25 +203,25 @@ namespace ESEKF
     }
 
     // 计算每个特征点的残差及H矩阵
-    void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &feats_down_body,
+    void h_share_model(dyn_share_datastruct &ekfom_data, PointCloud::Ptr &cloud,
                        KD_TREE<PointType> &ikdtree, std::vector<PointVector> &neighborhoods, bool extrinsic_est)
     {
-      int feats_down_size = feats_down_body->points.size();
+      int cloud_size = cloud->points.size();
       laserCloudOri->clear();
       corr_normvect->clear();
 
-      for (int i = 0; i < feats_down_size; i++) // 遍历所有的特征点
+      for (int i = 0; i < cloud_size; i++) // 遍历所有的特征点
       {
-        PointType &point_body = feats_down_body->points[i];
+        PointType &point = cloud->points[i];
         PointType point_world;
 
-        Vec3 p_body(point_body.x, point_body.y, point_body.z);
+        Vec3 p_l(point.x, point.y, point.z);
         // 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
-        Vec3 p_global(x_.rot * (x_.Rli * p_body + x_.tli) + x_.pos);
+        Vec3 p_global(x_.rot * (x_.Ril * p_l + x_.til) + x_.pos);
         point_world.x = p_global(0);
         point_world.y = p_global(1);
         point_world.z = p_global(2);
-        point_world.intensity = point_body.intensity;
+        point_world.intensity = point.intensity;
 
         std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
         auto &points_near = neighborhoods[i]; // neighborhoods[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
@@ -242,7 +242,7 @@ namespace ESEKF
         if (esti_plane(pabcd, points_near, 0.1f))
         {
           float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3); // 当前点到平面的距离
-          float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());                                                   // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
+          float s = 1 - 0.9 * fabs(pd2) / sqrt(p_l.norm());                                                   // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
 
           if (s > 0.9) // 如果残差大于阈值，则认为该点是有效点
           {
@@ -256,11 +256,11 @@ namespace ESEKF
       }
 
       int effct_feat_num = 0; // 有效特征点的数量
-      for (int i = 0; i < feats_down_size; i++)
+      for (int i = 0; i < cloud_size; i++)
       {
         if (point_selected_surf[i]) // 对于满足要求的点
         {
-          laserCloudOri->points[effct_feat_num] = feats_down_body->points[i]; // 把这些点重新存到laserCloudOri中
+          laserCloudOri->points[effct_feat_num] = cloud->points[i]; // 把这些点重新存到laserCloudOri中
           corr_normvect->points[effct_feat_num] = normvec->points[i];         // 存储这些点对应的法向量和到平面的距离
           effct_feat_num++;
         }
@@ -282,7 +282,7 @@ namespace ESEKF
         Vec3 point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
         Mat3 point_crossmat;
         point_crossmat << SKEW_SYM_MATRX(point_);
-        Vec3 point_I_ = x_.Rli * point_ + x_.tli;
+        Vec3 point_I_ = x_.Ril * point_ + x_.til;
         Mat3 point_I_crossmat;
         point_I_crossmat << SKEW_SYM_MATRX(point_I_);
 
@@ -295,7 +295,7 @@ namespace ESEKF
         Vec3 A(point_I_crossmat * C);
         if (extrinsic_est)
         {
-          Vec3 B(point_crossmat * x_.Rli.transpose() * C);
+          Vec3 B(point_crossmat * x_.Ril.transpose() * C);
           ekfom_data.h_x.block<1, NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
         }
         else
@@ -309,12 +309,12 @@ namespace ESEKF
     }
 
     // ESKF
-    void iterated_update(PointCloud::Ptr &feats_down_body,
+    void iterated_update(PointCloud::Ptr &cloud_ds,
                          KD_TREE<PointType> &ikdtree,
                          std::vector<PointVector> &neighborhoods)
     {
-      normvec->resize(int(feats_down_body->points.size()));
-      neighborhoods.resize(int(feats_down_body->points.size()));
+      normvec->resize(int(cloud_ds->points.size()));
+      neighborhoods.resize(int(cloud_ds->points.size()));
 
       dyn_share_datastruct dyn_share;
       dyn_share.valid = true;
@@ -329,7 +329,7 @@ namespace ESEKF
       {
         dyn_share.valid = true;
         // 计算雅克比，也就是点面残差的导数 H(代码里是h_x)
-        h_share_model(dyn_share, feats_down_body, ikdtree, neighborhoods, extrinsic_est_);
+        h_share_model(dyn_share, cloud_ds, ikdtree, neighborhoods, extrinsic_est_);
 
         if (!dyn_share.valid)
         {

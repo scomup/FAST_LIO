@@ -63,12 +63,10 @@
 
 std::mutex mtx_;
 
-double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
-double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-double filter_size_map_min = 0;
-double lidar_end_time = 0, first_lidar_time = 0.0;
-int effct_feat_num = 0;
-bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
+double last_timestamp_lidar_ = 0, last_timestamp_imu_ = -1.0;
+double filter_size_map_ = 0;
+double lidar_end_time_ = 0;
+bool lidar_pushed_, ekf_inited_ = false;
 
 std::vector<PointVector> neighbor_array_;
 std::deque<double> time_buffer_;
@@ -80,15 +78,13 @@ KD_TREE<PointType> ikdtree_;
 
 ESEKF::State state_;
 
-std::shared_ptr<Preprocess> p_pre(new Preprocess());
-std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
+std::shared_ptr<Preprocess> p_pre_(new Preprocess());
 
 
-
-void pointBodyToWorld(PointType const *const pi, PointType *const po)
+void pointL2W(PointType const *const pi, PointType *const po)
 {
-  Vec3 p_body(pi->x, pi->y, pi->z);
-  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
+  Vec3 p_lidar(pi->x, pi->y, pi->z);
+  Vec3 p_global(state_.rot * (state_.Ril * p_lidar + state_.til) + state_.pos);
 
   po->x = p_global(0);
   po->y = p_global(1);
@@ -97,10 +93,10 @@ void pointBodyToWorld(PointType const *const pi, PointType *const po)
 }
 
 template <typename T>
-void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
+void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
 {
   Vec3 p_body(pi[0], pi[1], pi[2]);
-  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
+  Vec3 p_global(state_.rot * (state_.Ril * p_body + state_.til) + state_.pos);
 
   po[0] = p_global(0);
   po[1] = p_global(1);
@@ -116,17 +112,17 @@ void lasermap_fov_segment(Vec3& pos_LiD)
 void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   mtx_.lock();
-  if (msg->header.stamp.toSec() < last_timestamp_lidar)
+  if (msg->header.stamp.toSec() < last_timestamp_lidar_)
   {
     ROS_ERROR("lidar loop back, clear buffer");
     lidar_buffer_.clear();
   }
 
   PointCloud::Ptr ptr(new PointCloud());
-  p_pre->process(msg, ptr);
+  p_pre_->process(msg, ptr);
   lidar_buffer_.push_back(ptr);
   time_buffer_.push_back(msg->header.stamp.toSec());
-  last_timestamp_lidar = msg->header.stamp.toSec();
+  last_timestamp_lidar_ = msg->header.stamp.toSec();
   mtx_.unlock();
 }
 
@@ -138,13 +134,13 @@ void imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
 
   mtx_.lock();
 
-  if (timestamp < last_timestamp_imu)
+  if (timestamp < last_timestamp_imu_)
   {
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer_.clear();
   }
 
-  last_timestamp_imu = timestamp;
+  last_timestamp_imu_ = timestamp;
 
   imu_buffer_.push_back(msg);
   mtx_.unlock();
@@ -152,7 +148,7 @@ void imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
 
 double lidar_mean_scantime = 0.0;
 int scan_num = 0;
-bool sync_packages(MeasureGroup &meas)
+bool syncData(SensorData &sensor_data)
 {
   if (lidar_buffer_.empty() || imu_buffer_.empty())
   {
@@ -160,144 +156,139 @@ bool sync_packages(MeasureGroup &meas)
   }
 
   /*** push a lidar scan ***/
-  if (!lidar_pushed)
+  if (!lidar_pushed_)
   {
-    meas.lidar = lidar_buffer_.front();
-    meas.lidar_beg_time = time_buffer_.front();
-    if (meas.lidar->points.size() <= 1) // time too little
+    sensor_data.lidar = lidar_buffer_.front();
+    sensor_data.lidar_beg_time = time_buffer_.front();
+    if (sensor_data.lidar->points.size() <= 1) // time too little
     {
-      lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
+      lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
       ROS_WARN("Too few input point cloud!\n");
     }
-    else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+    else if (sensor_data.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
     {
-      lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
+      lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
     }
     else
     {
       scan_num++;
-      lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-      lidar_mean_scantime += (meas.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+      lidar_end_time_ = sensor_data.lidar_beg_time + sensor_data.lidar->points.back().curvature / double(1000);
+      lidar_mean_scantime += (sensor_data.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
     }
 
-    meas.lidar_end_time = lidar_end_time;
+    sensor_data.lidar_end_time_ = lidar_end_time_;
 
-    lidar_pushed = true;
+    lidar_pushed_ = true;
   }
 
-  if (last_timestamp_imu < lidar_end_time)
+  if (last_timestamp_imu_ < lidar_end_time_)
   {
     return false;
   }
 
   /*** push imu data, and pop from imu buffer ***/
   double imu_time = imu_buffer_.front()->header.stamp.toSec();
-  meas.imu.clear();
-  while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time))
+  sensor_data.imu.clear();
+  while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time_))
   {
     imu_time = imu_buffer_.front()->header.stamp.toSec();
-    if (imu_time > lidar_end_time)
+    if (imu_time > lidar_end_time_)
       break;
-    meas.imu.push_back(imu_buffer_.front());
+    sensor_data.imu.push_back(imu_buffer_.front());
     imu_buffer_.pop_front();
   }
 
   lidar_buffer_.pop_front();
   time_buffer_.pop_front();
-  lidar_pushed = false;
+  lidar_pushed_ = false;
   return true;
 }
 
-bool init_map(const PointCloud::Ptr& cloud)
+bool initMap(const PointCloud::Ptr& cloud)
 {
   /*** initialize the map kdtree ***/
   if (ikdtree_.Root_Node == nullptr)
   {
     
-    int feats_down_size = cloud->points.size();
-    if (feats_down_size > 5)
+    int cloud_size = cloud->points.size();
+    if (cloud_size > 5)
     {
-      PointCloud::Ptr feats_down_world(new PointCloud(feats_down_size, 1));
-      ikdtree_.set_downsample_param(filter_size_map_min);
-      for (int i = 0; i < feats_down_size; i++)
+      PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
+      ikdtree_.set_downsample_param(filter_size_map_);
+      for (int i = 0; i < cloud_size; i++)
       {
-        pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
+        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]));
       }
-      ikdtree_.Build(feats_down_world->points);
+      ikdtree_.Build(cloud_world->points);
       return true;
     }
   }
   return false;
 }
 
-void map_incremental(PointCloud::Ptr cloud)
+void updateMap(PointCloud::Ptr cloud)
 {
-  PointVector PointToAdd;
-  PointVector PointNoNeedDownsample;
-  int feats_down_size = cloud->points.size();
-  PointToAdd.reserve(feats_down_size);
-  PointNoNeedDownsample.reserve(feats_down_size);
+  PointVector new_points;
+  PointVector new_points_ds;
+  int cloud_size = cloud->points.size();
 
-  PointCloud::Ptr feats_down_world(new PointCloud(feats_down_size, 1));
+  PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
 
 
-  for (int i = 0; i < feats_down_size; i++)
+  for (int i = 0; i < cloud_size; i++)
   {
     /* transform to world frame */
-    pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
+    pointL2W(&(cloud->points[i]), &(cloud_world->points[i]));
     /* decide if need add to map */
-    if (!neighbor_array_[i].empty() && flg_EKF_inited)
+    if (!neighbor_array_[i].empty() && ekf_inited_)
     {
-      const PointVector &points_near = neighbor_array_[i];
+      const PointVector &neighbors = neighbor_array_[i];
       bool need_add = true;
       BoxPointType Box_of_Point;
       PointType downsample_result, mid_point;
-      mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) * filter_size_map_min + 0.5 * filter_size_map_min;
-      mid_point.y = floor(feats_down_world->points[i].y / filter_size_map_min) * filter_size_map_min + 0.5 * filter_size_map_min;
-      mid_point.z = floor(feats_down_world->points[i].z / filter_size_map_min) * filter_size_map_min + 0.5 * filter_size_map_min;
-      float dist = calc_dist(feats_down_world->points[i], mid_point);
-      if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min && fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min && fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min)
+      mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
+      mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
+      mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
+      float dist = calc_dist(cloud_world->points[i], mid_point);
+      if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
       {
-        PointNoNeedDownsample.push_back(feats_down_world->points[i]);
+        new_points_ds.push_back(cloud_world->points[i]);
         continue;
       }
-      for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++)
+      for (int j = 0; j < neighbors.size(); j++)
       {
-        if (points_near.size() < NUM_MATCH_POINTS)
-          break;
-        if (calc_dist(points_near[readd_i], mid_point) < dist)
+        if (calc_dist(neighbors[j], mid_point) < dist)
         {
           need_add = false;
           break;
         }
       }
       if (need_add)
-        PointToAdd.push_back(feats_down_world->points[i]);
+        new_points.push_back(cloud_world->points[i]);
     }
     else
     {
-      PointToAdd.push_back(feats_down_world->points[i]);
+      new_points.push_back(cloud_world->points[i]);
     }
   }
 
-  ikdtree_.Add_Points(PointToAdd, true);
-  ikdtree_.Add_Points(PointNoNeedDownsample, false);
+  ikdtree_.Add_Points(new_points, true);
+  ikdtree_.Add_Points(new_points_ds, false);
 }
 
-void publish_frame_world(const ros::Publisher &pub_cloud, PointCloud::Ptr& cloud)
+void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr& cloud)
 {
   int size = cloud->points.size();
   PointCloud::Ptr cloud_world(new PointCloud(size, 1));
   for (int i = 0; i < size; i++)
   {
-    RGBpointBodyToWorld(&cloud->points[i],
-                        &laserCloudWorld->points[i]);
+    pointL2W(&cloud->points[i],  &cloud_world->points[i]);
   }
 
   sensor_msgs::PointCloud2 cloud_msg;
   pcl::toROSMsg(*cloud_world, cloud_msg);
-  cloud_msg.header.stamp = ros::Time().fromSec(lidar_end_time);
-  cloud_msg.header.frame_id = "lidar";
+  cloud_msg.header.stamp = ros::Time().fromSec(lidar_end_time_);
+  cloud_msg.header.frame_id = "map";
   pub_cloud.publish(cloud_msg);
 
 }
@@ -320,9 +311,9 @@ void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
 {
   nav_msgs::Odometry odom;
 
-  odom.header.frame_id = "lidar";
-  odom.child_frame_id = "body";
-  odom.header.stamp = ros::Time().fromSec(lidar_end_time); // ros::Time().fromSec(lidar_end_time);
+  odom.header.frame_id = "map";
+  odom.child_frame_id = "imu";
+  odom.header.stamp = ros::Time().fromSec(lidar_end_time_); // ros::Time().fromSec(lidar_end_time_);
   set_posestamp(odom.pose);
   pub.publish(odom);
   auto P = kf.get_P();
@@ -348,6 +339,6 @@ void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
   q.setY(odom.pose.pose.orientation.y);
   q.setZ(odom.pose.pose.orientation.z);
   transform.setRotation(q);
-  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "lidar", "body"));
+  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "map", "imu"));
 }
 

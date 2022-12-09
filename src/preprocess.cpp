@@ -1,32 +1,9 @@
 #include "preprocess.h"
 
-#define RETURN0 0x00
-#define RETURN0AND1 0x10
 
 Preprocess::Preprocess()
     : blind(0.01), point_filter_num(1)
 {
-  inf_bound = 10;
-  group_size = 8;
-  disA = 0.01;
-  disA = 0.1; // B?
-  p2l_ratio = 225;
-  limit_maxmid = 6.25;
-  limit_midmin = 6.25;
-  limit_maxmin = 3.24;
-  jump_up_limit = 170.0;
-  jump_down_limit = 8.0;
-  cos160 = 160.0;
-  edgea = 2;
-  edgeb = 0.1;
-  smallp_intersect = 172.5;
-  smallp_ratio = 1.2;
-  given_offset_time = false;
-
-  jump_up_limit = cos(jump_up_limit / 180 * M_PI);
-  jump_down_limit = cos(jump_down_limit / 180 * M_PI);
-  cos160 = cos(cos160 / 180 * M_PI);
-  smallp_intersect = cos(smallp_intersect / 180 * M_PI);
 }
 
 Preprocess::~Preprocess() {}
@@ -72,8 +49,6 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   int plsize = pl_orig.points.size();
   if (plsize == 0)
     return;
-  /*****************************************************************/
-  given_offset_time = true;
 
   for (int i = 0; i < plsize; i++)
   {
@@ -98,14 +73,4 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       }
     }
   }
-}
-
-void Preprocess::pub_func(PointCloud &pl, const ros::Time &ct)
-{
-  pl.height = 1;
-  pl.width = pl.size();
-  sensor_msgs::PointCloud2 output;
-  pcl::toROSMsg(pl, output);
-  output.header.frame_id = "livox";
-  output.header.stamp = ct;
 }

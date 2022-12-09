@@ -3,6 +3,8 @@
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
 
+bool flg_exit = false;
+
 void SigHandle(int sig)
 {
   flg_exit = true;
@@ -18,21 +20,23 @@ int main(int argc, char **argv)
   int max_iteration;
   double filter_size_surf_min = 0;
   bool extrinsic_est_en = true;
+  double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 
-  std::vector<double> extrinT(3, 0);
+
+  std::vector<double> extrinT = {0, 0, 0};
   std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<int>("max_iteration", max_iteration, 4);
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
-  nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
+  nh.param<double>("filter_size_map", filter_size_map_, 0.5);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
   nh.param<double>("mapping/b_acc_cov", b_acc_cov, 0.0001);
-  nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
-  nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
-  nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
+  nh.param<double>("preprocess/blind", p_pre_->blind, 0.01);
+  nh.param<int>("preprocess/timestamp_unit", p_pre_->time_unit, US);
+  nh.param<int>("point_filter_num", p_pre_->point_filter_num, 2);
   nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
 
   nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
@@ -42,18 +46,19 @@ int main(int argc, char **argv)
 
   kf.init(LASER_POINT_COV, max_iteration, extrinsic_est_en);
 
+  std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
+
 
   memset(ESEKF::point_selected_surf, true, sizeof(ESEKF::point_selected_surf));
 
-  pcl::VoxelGrid<PointType> downSizeFilterSurf;
-  downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+  pcl::VoxelGrid<PointType> downsampe_filter;
+  downsampe_filter.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 
-  Vec3 tli;
-  Mat3 Rli;
-
-  tli << VEC_FROM_ARRAY(extrinT);
-  Rli << MAT_FROM_ARRAY(extrinR);
-  p_imu->set_extrinsic(tli, Rli);
+  Vec3 til;
+  Mat3 Ril;
+  til << VEC_FROM_ARRAY(extrinT);
+  Ril << MAT_FROM_ARRAY(extrinR);
+  p_imu->set_extrinsic(til, Ril);
   p_imu->set_gyr_cov(Vec3(gyr_cov, gyr_cov, gyr_cov));
   p_imu->set_acc_cov(Vec3(acc_cov, acc_cov, acc_cov));
   p_imu->set_gyr_bias_cov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
@@ -69,10 +74,11 @@ int main(int argc, char **argv)
   ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
   //------------------------------------------------------------------------------------------------------
 
-  MeasureGroup Measures;
-  PointCloud::Ptr feats_undistort(new PointCloud());
-  PointCloud::Ptr feats_down_body(new PointCloud());
-
+  SensorData sensor_data;
+  PointCloud::Ptr cloud_deskew(new PointCloud());
+  PointCloud::Ptr cloud_ds(new PointCloud());
+  double first_lidar_time = 0.0;
+  bool flg_first_scan = true;
 
   signal(SIGINT, SigHandle);
   ros::Rate rate(5000);
@@ -82,61 +88,62 @@ int main(int argc, char **argv)
     if (flg_exit)
       break;
     ros::spinOnce();
-    if (sync_packages(Measures))
+    if (syncData(sensor_data))
     {
       if (flg_first_scan)
       {
-        first_lidar_time = Measures.lidar_beg_time;
+        first_lidar_time = sensor_data.lidar_beg_time;
         p_imu->first_lidar_time = first_lidar_time;
         flg_first_scan = false;
         continue;
       }
 
 
-      p_imu->Process(Measures, kf, feats_undistort); // deskew lidar points. by backward propagation
+      p_imu->Process(sensor_data, kf, cloud_deskew); // deskew lidar points. by backward propagation
 
 
-      if (feats_undistort->empty() || (feats_undistort == NULL))
+      if (cloud_deskew->empty() || (cloud_deskew == NULL))
       {
         ROS_WARN("No point, skip this scan!\n");
         continue;
       }
+      ekf_inited_ = (sensor_data.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
 
       /*** Segment the map in lidar FOV ***/
       state_ = kf.get_x();
-      //Vec3 pos_lid = state_.pos + state_.rot * state_.tli; // Lidar point in global frame.
+      //Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
       //lasermap_fov_segment(pos_lid);
 
       /*** downsample the feature points in a scan ***/
-      downSizeFilterSurf.setInputCloud(feats_undistort);
-      downSizeFilterSurf.filter(*feats_down_body);
+      downsampe_filter.setInputCloud(cloud_deskew);
+      downsampe_filter.filter(*cloud_ds);
 
-      if(init_map(feats_down_body))
+      if(initMap(cloud_ds))
       {
         continue;
       }
 
-      int feats_down_size = feats_down_body->points.size();
+      int cloud_size = cloud_ds->points.size();
 
       /*** ICP and iterated Kalman filter update ***/
-      if (feats_down_size < 5)
+      if (cloud_size < 5)
       {
         ROS_WARN("No point, skip this scan!\n");
         continue;
       }
 
       /*** iterated state estimation ***/
-      kf.iterated_update(feats_down_body, ikdtree_, neighbor_array_);
+      kf.iterated_update(cloud_ds, ikdtree_, neighbor_array_);
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped, kf);
 
       /*** add the feature points to map kdtree ***/
-      map_incremental(feats_down_body);
+      updateMap(cloud_ds);
 
       /******* Publish points *******/
       if (scan_pub_en)
-        publish_frame_world(pub_cloud, feats_undistort);
+        pubCloud(pub_cloud, cloud_deskew);
     }
 
     status = ros::ok();

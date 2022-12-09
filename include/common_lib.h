@@ -37,15 +37,15 @@ typedef Eigen::Matrix<double, 4, 4> Mat4;
 Mat3 Eye3d(Mat3::Identity());
 Vec3 Zero3d(0, 0, 0);
 
-struct MeasureGroup // Lidar data and imu dates for the curent process
+struct SensorData // Lidar data and imu dates for the curent process
 {
-  MeasureGroup()
+  SensorData()
   {
     lidar_beg_time = 0.0;
     this->lidar.reset(new PointCloud());
   };
   double lidar_beg_time;
-  double lidar_end_time;
+  double lidar_end_time_;
   PointCloud::Ptr lidar;
   std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
