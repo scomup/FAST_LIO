@@ -61,51 +61,29 @@
 #define PUBFRAME_PERIOD (20)
 
 
-const float MOV_THRESHOLD = 1.5f;
+std::mutex mtx_;
 
-std::mutex mtx_buffer;
-std::condition_variable sig_buffer;
-
-double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double filter_size_map_min = 0;
-double cube_len = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
-int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
-int iterCount = 0, laserCloudValidNum = 0,  pcd_index = 0;
+double lidar_end_time = 0, first_lidar_time = 0.0;
+int effct_feat_num = 0;
 bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 
-std::vector<BoxPointType> cub_needrm;
-std::vector<PointVector> neighbor_array;
-std::deque<double> time_buffer;
-std::deque<PointCloud::Ptr> lidar_buffer;
-std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+std::vector<PointVector> neighbor_array_;
+std::deque<double> time_buffer_;
+std::deque<PointCloud::Ptr> lidar_buffer_;
+std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
 
 
 KD_TREE<PointType> ikdtree_;
 
-Vec3 position_last(Zero3d);
-
-/*** EKF inputs and output ***/
 ESEKF::State state_;
-//Eigen::Vector3d pos_lid;
-
-nav_msgs::Odometry odomAftMapped;
 
 std::shared_ptr<Preprocess> p_pre(new Preprocess());
 std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
 
-BoxPointType LocalMap_Points;
-bool Localmap_Initialized = false;
 
-
-
-void SigHandle(int sig)
-{
-  flg_exit = true;
-  ROS_WARN("catch sig %d", sig);
-  sig_buffer.notify_all();
-}
 
 void pointBodyToWorld(PointType const *const pi, PointType *const po)
 {
@@ -157,55 +135,48 @@ void lasermap_fov_segment(Vec3& pos_LiD)
   return;
 }
 
-void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
+void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  mtx_buffer.lock();
-  scan_count++;
+  mtx_.lock();
   if (msg->header.stamp.toSec() < last_timestamp_lidar)
   {
     ROS_ERROR("lidar loop back, clear buffer");
-    lidar_buffer.clear();
+    lidar_buffer_.clear();
   }
 
   PointCloud::Ptr ptr(new PointCloud());
   p_pre->process(msg, ptr);
-  lidar_buffer.push_back(ptr);
-  time_buffer.push_back(msg->header.stamp.toSec());
+  lidar_buffer_.push_back(ptr);
+  time_buffer_.push_back(msg->header.stamp.toSec());
   last_timestamp_lidar = msg->header.stamp.toSec();
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+  mtx_.unlock();
 }
 
-void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
+void imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
-  publish_count++;
-  // std::cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<std::endl;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
-
-
 
   double timestamp = msg->header.stamp.toSec();
 
-  mtx_buffer.lock();
+  mtx_.lock();
 
   if (timestamp < last_timestamp_imu)
   {
     ROS_WARN("imu loop back, clear buffer");
-    imu_buffer.clear();
+    imu_buffer_.clear();
   }
 
   last_timestamp_imu = timestamp;
 
-  imu_buffer.push_back(msg);
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+  imu_buffer_.push_back(msg);
+  mtx_.unlock();
 }
 
 double lidar_mean_scantime = 0.0;
 int scan_num = 0;
 bool sync_packages(MeasureGroup &meas)
 {
-  if (lidar_buffer.empty() || imu_buffer.empty())
+  if (lidar_buffer_.empty() || imu_buffer_.empty())
   {
     return false;
   }
@@ -213,8 +184,8 @@ bool sync_packages(MeasureGroup &meas)
   /*** push a lidar scan ***/
   if (!lidar_pushed)
   {
-    meas.lidar = lidar_buffer.front();
-    meas.lidar_beg_time = time_buffer.front();
+    meas.lidar = lidar_buffer_.front();
+    meas.lidar_beg_time = time_buffer_.front();
     if (meas.lidar->points.size() <= 1) // time too little
     {
       lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
@@ -242,19 +213,19 @@ bool sync_packages(MeasureGroup &meas)
   }
 
   /*** push imu data, and pop from imu buffer ***/
-  double imu_time = imu_buffer.front()->header.stamp.toSec();
+  double imu_time = imu_buffer_.front()->header.stamp.toSec();
   meas.imu.clear();
-  while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
+  while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time))
   {
-    imu_time = imu_buffer.front()->header.stamp.toSec();
+    imu_time = imu_buffer_.front()->header.stamp.toSec();
     if (imu_time > lidar_end_time)
       break;
-    meas.imu.push_back(imu_buffer.front());
-    imu_buffer.pop_front();
+    meas.imu.push_back(imu_buffer_.front());
+    imu_buffer_.pop_front();
   }
 
-  lidar_buffer.pop_front();
-  time_buffer.pop_front();
+  lidar_buffer_.pop_front();
+  time_buffer_.pop_front();
   lidar_pushed = false;
   return true;
 }
@@ -297,9 +268,9 @@ void map_incremental(PointCloud::Ptr cloud)
     /* transform to world frame */
     pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
     /* decide if need add to map */
-    if (!neighbor_array[i].empty() && flg_EKF_inited)
+    if (!neighbor_array_[i].empty() && flg_EKF_inited)
     {
-      const PointVector &points_near = neighbor_array[i];
+      const PointVector &points_near = neighbor_array_[i];
       bool need_add = true;
       BoxPointType Box_of_Point;
       PointType downsample_result, mid_point;
@@ -351,7 +322,6 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull, PointCloud::Pt
   laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
   laserCloudmsg.header.frame_id = "camera_init";
   pubLaserCloudFull.publish(laserCloudmsg);
-  publish_count -= PUBFRAME_PERIOD;
 }
 
 
@@ -368,36 +338,38 @@ void set_posestamp(T &out)
   out.pose.orientation.w = q.w();
 }
 
-void publish_odometry(const ros::Publisher &pubOdomAftMapped, const ESEKF::esekf& kf)
+void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
 {
-  odomAftMapped.header.frame_id = "camera_init";
-  odomAftMapped.child_frame_id = "body";
-  odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time); // ros::Time().fromSec(lidar_end_time);
-  set_posestamp(odomAftMapped.pose);
-  pubOdomAftMapped.publish(odomAftMapped);
+  nav_msgs::Odometry odom;
+
+  odom.header.frame_id = "camera_init";
+  odom.child_frame_id = "body";
+  odom.header.stamp = ros::Time().fromSec(lidar_end_time); // ros::Time().fromSec(lidar_end_time);
+  set_posestamp(odom.pose);
+  pub.publish(odom);
   auto P = kf.get_P();
   for (int i = 0; i < 6; i++)
   {
     int k = i < 3 ? i + 3 : i - 3;
-    odomAftMapped.pose.covariance[i * 6 + 0] = P(k, 3);
-    odomAftMapped.pose.covariance[i * 6 + 1] = P(k, 4);
-    odomAftMapped.pose.covariance[i * 6 + 2] = P(k, 5);
-    odomAftMapped.pose.covariance[i * 6 + 3] = P(k, 0);
-    odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
-    odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
+    odom.pose.covariance[i * 6 + 0] = P(k, 3);
+    odom.pose.covariance[i * 6 + 1] = P(k, 4);
+    odom.pose.covariance[i * 6 + 2] = P(k, 5);
+    odom.pose.covariance[i * 6 + 3] = P(k, 0);
+    odom.pose.covariance[i * 6 + 4] = P(k, 1);
+    odom.pose.covariance[i * 6 + 5] = P(k, 2);
   }
 
   static tf::TransformBroadcaster br;
   tf::Transform transform;
   tf::Quaternion q;
-  transform.setOrigin(tf::Vector3(odomAftMapped.pose.pose.position.x,
-                                  odomAftMapped.pose.pose.position.y,
-                                  odomAftMapped.pose.pose.position.z));
-  q.setW(odomAftMapped.pose.pose.orientation.w);
-  q.setX(odomAftMapped.pose.pose.orientation.x);
-  q.setY(odomAftMapped.pose.pose.orientation.y);
-  q.setZ(odomAftMapped.pose.pose.orientation.z);
+  transform.setOrigin(tf::Vector3(odom.pose.pose.position.x,
+                                  odom.pose.pose.position.y,
+                                  odom.pose.pose.position.z));
+  q.setW(odom.pose.pose.orientation.w);
+  q.setX(odom.pose.pose.orientation.x);
+  q.setY(odom.pose.pose.orientation.y);
+  q.setZ(odom.pose.pose.orientation.z);
   transform.setRotation(q);
-  br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "camera_init", "body"));
+  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "camera_init", "body"));
 }
 

@@ -61,7 +61,7 @@ namespace ESEKF
     Eigen::Vector3d grav = Eigen::Vector3d(0, 0, -G_m_s2);
 
     // plus for state
-    State plus(Eigen::Matrix<double, SZ, 1> f)
+    State plus(Eigen::Matrix<double, SZ, 1>& f) const
     {
       State r;
       r.pos = this->pos + f.segment<3>(L_P);
@@ -76,7 +76,7 @@ namespace ESEKF
     }
 
     // minus for state
-    Eigen::Matrix<double, SZ, 1> minus(State x2)
+    Eigen::Matrix<double, SZ, 1> minus(const State& x2) const
     {
       Eigen::Matrix<double, SZ, 1> r;
       r.segment<3>(L_P) = this->pos - x2.pos;
@@ -88,6 +88,12 @@ namespace ESEKF
       r.segment<3>(L_Ba) = this->ba - x2.ba;
       r.segment<3>(L_G) = this->grav - x2.grav;
       return r;
+    }
+
+    Eigen::Affine3d getAffine3d() const
+    {
+      Eigen::Affine3d affine = Eigen::Translation3d(pos) * rot;
+      return affine;
     }
   };
 
@@ -113,38 +119,38 @@ namespace ESEKF
   // x: state
   // u: input
   // update state by input(IMU)
-  Eigen::Matrix<double, SZ, 1> f_func(State state, InputU in)
+  Eigen::Matrix<double, SZ, 1> f_func(State state, InputU in, double dt)
   {
     Eigen::Matrix<double, SZ, 1> ret = Eigen::Matrix<double, SZ, 1>::Zero();
     ret.segment<3>(L_P) = state.vel;                                    // (7) row 2: velocity
     ret.segment<3>(L_R) = in.gyro - state.bg;                           // (7) row 1: omega
     ret.segment<3>(L_V) = state.rot * (in.acc - state.ba) + state.grav; // (7) row 3: acceleration
-    return ret;
+    return ret * dt;
   }
 
   // paper (7) df_fx:
   // Partial derivatives of the kinematic model(f) with respect to current state.
-  Eigen::Matrix<double, SZ, SZ> df_dx_func(State s, InputU in)
+  Eigen::Matrix<double, SZ, SZ> df_dx_func(State s, InputU in, double dt)
   {
-    Eigen::Matrix<double, SZ, SZ> Cov = Eigen::Matrix<double, SZ, SZ>::Zero();
-    Cov.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity(); // paper (7) Fx(2,3)
-    Eigen::Vector3d acc_corrected = in.acc - s.ba;
-    Cov.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected); // paper(7) Fx(3,1)
-    Cov.block<3, 3>(L_V, L_Ba) = -s.rot;                            // paper(7) Fx(3,5)
-    Cov.block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity();        // paper(7) Fx(3,6)
-    Cov.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity();      // paper(7) Fx(1,4)
+    Eigen::Matrix<double, SZ, SZ> Cov = Eigen::Matrix<double, SZ, SZ>::Identity();
+    Cov.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity() * dt;       // paper (7) Fx(2,3)
+    Eigen::Vector3d acc_corrected = (in.acc - s.ba) * dt;
+    Cov.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected)* dt; // paper(7) Fx(3,1)
+    Cov.block<3, 3>(L_V, L_Ba) = -s.rot* dt;                            // paper(7) Fx(3,5)
+    Cov.block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity()* dt;        // paper(7) Fx(3,6)
+    Cov.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity()* dt;      // paper(7) Fx(1,4)
     return Cov;
   }
 
   // paper (7) df_fw:
   // Partial derivatives of the kinematic model(f) with respect to noise.
-  Eigen::Matrix<double, SZ, NZ> df_dw_func(State s, InputU in)
+  Eigen::Matrix<double, SZ, NZ> df_dw_func(State s, InputU in, double dt)
   {
     Eigen::Matrix<double, SZ, NZ> Cov = Eigen::Matrix<double, SZ, NZ>::Zero();
-    Cov.block<3, 3>(L_V, L_Na) = -s.rot;                        //  paper (7) Fw(3,2)
-    Cov.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity();  //  paper (7) Fw(1,1)
-    Cov.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity(); //  paper (7) Fw(4,3)
-    Cov.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity(); //  paper (7) Fw(5,4)
+    Cov.block<3, 3>(L_V, L_Na) = -s.rot * dt;                        //  paper (7) Fw(3,2)
+    Cov.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity() * dt;  //  paper (7) Fw(1,1)
+    Cov.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity() * dt; //  paper (7) Fw(4,3)
+    Cov.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity() * dt; //  paper (7) Fw(5,4)
     return Cov;
   }
 
@@ -189,14 +195,11 @@ namespace ESEKF
     // Forward Propagation  III-C
     void predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in)
     {
-      Eigen::Matrix<double, SZ, 1> f = f_func(x_, i_in);        // paper (3) f
-      Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, i_in); // paper (7) df/dx
-      Eigen::Matrix<double, SZ, NZ> f_w = df_dw_func(x_, i_in); // paper (7) df/dw
-      x_ = x_.plus(f * dt);                                     // 前向传播 公式(4)
-
-      f_x = Eigen::Matrix<double, SZ, SZ>::Identity() + f_x * dt; // 之前Fx矩阵里的项没加单位阵，没乘dt   这里补上
-
-      P_ = (f_x)*P_ * (f_x).transpose() + (dt * f_w) * Q * (dt * f_w).transpose(); // 传播协方差矩阵，即公式(8)
+      Eigen::Matrix<double, SZ, 1> f = f_func(x_, i_in, dt) ;       // paper (3) f
+      Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, i_in, dt); // paper (7) df/dx
+      Eigen::Matrix<double, SZ, NZ> f_w = df_dw_func(x_, i_in, dt); // paper (7) df/dw
+      x_ = x_.plus( f );                                            // paper (4)
+      P_ = f_x * P_ * f_x.transpose() + f_w * Q * f_w.transpose();  // paper (8) Cov of Forward Propagation
     }
 
     // 计算每个特征点的残差及H矩阵

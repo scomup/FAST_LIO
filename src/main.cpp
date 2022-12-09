@@ -3,6 +3,12 @@
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
 
+void SigHandle(int sig)
+{
+  flg_exit = true;
+  ROS_WARN("catch sig %d", sig);
+}
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "laserMapping");
@@ -20,7 +26,6 @@ int main(int argc, char **argv)
   nh.param<int>("max_iteration", max_iteration, 4);
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
   nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
-  nh.param<double>("cube_side_length", cube_len, 200);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -55,8 +60,8 @@ int main(int argc, char **argv)
   p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
   /*** ROS subscribe initialization ***/
-  ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, standard_pcl_cbk);
-  ros::Subscriber sub_imu = nh.subscribe("/imu/data", 200000, imu_cbk);
+  ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, cloudCB);
+  ros::Subscriber sub_imu = nh.subscribe("/imu/data", 200000, imuCB);
   ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
   ros::Publisher pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
   ros::Publisher pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100000);
@@ -121,7 +126,7 @@ int main(int argc, char **argv)
       }
 
       /*** iterated state estimation ***/
-      kf.iterated_update(feats_down_body, ikdtree_, neighbor_array);
+      kf.iterated_update(feats_down_body, ikdtree_, neighbor_array_);
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped, kf);
