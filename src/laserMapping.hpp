@@ -107,28 +107,6 @@ void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &
   po[2] = p_global(2);
 }
 
-void RGBpointBodyToWorld(PointType const *const pi, PointType *const po)
-{
-  Vec3 p_body(pi->x, pi->y, pi->z);
-  Vec3 p_global(state_.rot * (state_.Rli * p_body + state_.tli) + state_.pos);
-
-  po->x = p_global(0);
-  po->y = p_global(1);
-  po->z = p_global(2);
-  po->intensity = pi->intensity;
-}
-
-void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po)
-{
-  Vec3 p_body_lidar(pi->x, pi->y, pi->z);
-  Vec3 p_body_imu(state_.Rli * p_body_lidar + state_.tli);
-
-  po->x = p_body_imu(0);
-  po->y = p_body_imu(1);
-  po->z = p_body_imu(2);
-  po->intensity = pi->intensity;
-}
-
 void lasermap_fov_segment(Vec3& pos_LiD)
 {
   //Removes the point far from the current position.
@@ -306,22 +284,22 @@ void map_incremental(PointCloud::Ptr cloud)
   ikdtree_.Add_Points(PointNoNeedDownsample, false);
 }
 
-void publish_frame_world(const ros::Publisher &pubLaserCloudFull, PointCloud::Ptr& cloud)
+void publish_frame_world(const ros::Publisher &pub_cloud, PointCloud::Ptr& cloud)
 {
   int size = cloud->points.size();
-  PointCloud::Ptr laserCloudWorld(new PointCloud(size, 1));
-
+  PointCloud::Ptr cloud_world(new PointCloud(size, 1));
   for (int i = 0; i < size; i++)
   {
     RGBpointBodyToWorld(&cloud->points[i],
                         &laserCloudWorld->points[i]);
   }
 
-  sensor_msgs::PointCloud2 laserCloudmsg;
-  pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-  laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-  laserCloudmsg.header.frame_id = "camera_init";
-  pubLaserCloudFull.publish(laserCloudmsg);
+  sensor_msgs::PointCloud2 cloud_msg;
+  pcl::toROSMsg(*cloud_world, cloud_msg);
+  cloud_msg.header.stamp = ros::Time().fromSec(lidar_end_time);
+  cloud_msg.header.frame_id = "lidar";
+  pub_cloud.publish(cloud_msg);
+
 }
 
 
@@ -342,7 +320,7 @@ void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
 {
   nav_msgs::Odometry odom;
 
-  odom.header.frame_id = "camera_init";
+  odom.header.frame_id = "lidar";
   odom.child_frame_id = "body";
   odom.header.stamp = ros::Time().fromSec(lidar_end_time); // ros::Time().fromSec(lidar_end_time);
   set_posestamp(odom.pose);
@@ -370,6 +348,6 @@ void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
   q.setY(odom.pose.pose.orientation.y);
   q.setZ(odom.pose.pose.orientation.z);
   transform.setRotation(q);
-  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "camera_init", "body"));
+  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "lidar", "body"));
 }
 

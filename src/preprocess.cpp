@@ -60,12 +60,12 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
 
   velodyne_handler(msg);
 
-  *pcl_out = pl_surf;
+  *pcl_out = pl_;
 }
 
 void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  pl_surf.clear();
+  pl_.clear();
 
   pcl::PointCloud<velodyne_ros::Point> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
@@ -94,7 +94,7 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
       if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind))
       {
-        pl_surf.points.push_back(added_pt);
+        pl_.points.push_back(added_pt);
       }
     }
   }

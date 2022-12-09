@@ -62,8 +62,8 @@ int main(int argc, char **argv)
   /*** ROS subscribe initialization ***/
   ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, cloudCB);
   ros::Subscriber sub_imu = nh.subscribe("/imu/data", 200000, imuCB);
-  ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
-  ros::Publisher pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
+  ros::Publisher pub_cloud = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
+  ros::Publisher pub_cloud_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
   ros::Publisher pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100000);
   ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100000);
   ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
 
       /******* Publish points *******/
       if (scan_pub_en)
-        publish_frame_world(pubLaserCloudFull, feats_undistort);
+        publish_frame_world(pub_cloud, feats_undistort);
     }
 
     status = ros::ok();

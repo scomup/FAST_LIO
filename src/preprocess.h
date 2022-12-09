@@ -69,8 +69,7 @@ public:
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out);
   void set(double bld, int pfilt_num);
 
-  // sensor_msgs::PointCloud2::ConstPtr pointcloud;
-  PointCloud pl_surf;
+  PointCloud pl_; // cloud in lidar frame.
   float time_unit_scale;
   int point_filter_num, time_unit;
   double blind;
