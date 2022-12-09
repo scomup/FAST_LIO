@@ -95,15 +95,10 @@ void pointL2W(PointType const *const pi, PointType *const po)
 template <typename T>
 void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
 {
-  Vec3 p_body(pi[0], pi[1], pi[2]);
-  Vec3 p_global(state_.rot * (state_.Ril * p_body + state_.til) + state_.pos);
-
-  po[0] = p_global(0);
-  po[1] = p_global(1);
-  po[2] = p_global(2);
+  po = (state_.rot * (state_.Ril * pi + state_.til) + state_.pos);
 }
 
-void lasermap_fov_segment(Vec3& pos_LiD)
+void updateMapArea(Vec3& pos_LiD)
 {
   //Removes the point far from the current position.
   return;
@@ -293,9 +288,8 @@ void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr& cloud)
 
 }
 
-
 template <typename T>
-void set_posestamp(T &out)
+void setOdomMsg(T &out)
 {
   out.pose.position.x = state_.pos(0);
   out.pose.position.y = state_.pos(1);
@@ -314,7 +308,7 @@ void publish_odometry(const ros::Publisher &pub, const ESEKF::esekf& kf)
   odom.header.frame_id = "map";
   odom.child_frame_id = "imu";
   odom.header.stamp = ros::Time().fromSec(lidar_end_time_); // ros::Time().fromSec(lidar_end_time_);
-  set_posestamp(odom.pose);
+  setOdomMsg(odom.pose);
   pub.publish(odom);
   auto P = kf.get_P();
   for (int i = 0; i < 6; i++)

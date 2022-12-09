@@ -112,7 +112,7 @@ int main(int argc, char **argv)
       /*** Segment the map in lidar FOV ***/
       state_ = kf.get_x();
       //Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
-      //lasermap_fov_segment(pos_lid);
+      //updateMapArea(pos_lid);
 
       /*** downsample the feature points in a scan ***/
       downsampe_filter.setInputCloud(cloud_deskew);
