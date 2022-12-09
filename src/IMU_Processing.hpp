@@ -333,7 +333,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, ESEKF::esekf &kf_state, 
   }
 }
 
-void ImuProcess::Process(const MeasureGroup &meas,  ESEKF::esekf &kf_state, PointCloud::Ptr& cur_pcl_un_)
+void ImuProcess::Process(const MeasureGroup &meas,  ESEKF::esekf &kf_state, PointCloud::Ptr& cur_pcl_un)
 {
   double t1,t2,t3;
   t1 = omp_get_wtime();
@@ -367,7 +367,7 @@ void ImuProcess::Process(const MeasureGroup &meas,  ESEKF::esekf &kf_state, Poin
     return;
   }
 
-  UndistortPcl(meas, kf_state, *cur_pcl_un_);
+  UndistortPcl(meas, kf_state, *cur_pcl_un);
 
   t2 = omp_get_wtime();
   t3 = omp_get_wtime();

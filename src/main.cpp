@@ -1,5 +1,8 @@
 #include "laserMapping.hpp"
 
+#define INIT_TIME (0.1)
+#define LASER_POINT_COV (0.001)
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "laserMapping");
@@ -7,15 +10,16 @@ int main(int argc, char **argv)
 
   bool scan_pub_en = false;
   int max_iteration;
+  double filter_size_surf_min = 0;
+  std::vector<double> extrinT(3, 0);
+  std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<int>("max_iteration", max_iteration, 4);
-  nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
-  nh.param<double>("filter_size_corner", filter_size_corner_min, 0.5);
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
   nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
   nh.param<double>("cube_side_length", cube_len, 200);
-  nh.param<float>("mapping/det_range", DET_RANGE, 300.f);
+  nh.param<float>("mapping/det_range", det_range, 300.f);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -32,24 +36,22 @@ int main(int argc, char **argv)
 
   kf.init(LASER_POINT_COV, max_iteration, extrinsic_est_en);
 
-  /*** variables definition ***/
-  int effect_feat_num = 0, frame_num = 0;
-  double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
-  bool flg_EKF_converged, EKF_stop_flg = 0;
-
 
   memset(ESEKF::point_selected_surf, true, sizeof(ESEKF::point_selected_surf));
-  memset(res_last, -1000.0f, sizeof(res_last));
+
+  pcl::VoxelGrid<PointType> downSizeFilterSurf;
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 
-  Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
-  Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
-  p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+  Vec3 tli;
+  Mat3 Rli;
+
+  tli << VEC_FROM_ARRAY(extrinT);
+  Rli << MAT_FROM_ARRAY(extrinR);
+  p_imu->set_extrinsic(tli, Rli);
   p_imu->set_gyr_cov(Vec3(gyr_cov, gyr_cov, gyr_cov));
   p_imu->set_acc_cov(Vec3(acc_cov, acc_cov, acc_cov));
   p_imu->set_gyr_bias_cov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
   p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
-
 
   /*** ROS subscribe initialization ***/
   ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, standard_pcl_cbk);
@@ -62,6 +64,8 @@ int main(int argc, char **argv)
   //------------------------------------------------------------------------------------------------------
 
   MeasureGroup Measures;
+  PointCloud::Ptr feats_undistort(new PointCloud());
+  PointCloud::Ptr feats_down_body(new PointCloud());
 
 
   signal(SIGINT, SigHandle);
@@ -100,26 +104,13 @@ int main(int argc, char **argv)
       /*** downsample the feature points in a scan ***/
       downSizeFilterSurf.setInputCloud(feats_undistort);
       downSizeFilterSurf.filter(*feats_down_body);
-      feats_down_size = feats_down_body->points.size();
-      /*** initialize the map kdtree ***/
-      if (ikdtree.Root_Node == nullptr)
+
+      if(init_map(feats_down_body))
       {
-        if (feats_down_size > 5)
-        {
-          ikdtree.set_downsample_param(filter_size_map_min);
-          feats_down_world->resize(feats_down_size);
-          for (int i = 0; i < feats_down_size; i++)
-          {
-            pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
-          }
-          ikdtree.Build(feats_down_world->points);
-        }
         continue;
       }
-      int featsFromMapNum = ikdtree.validnum();
-      kdtree_size_st = ikdtree.size();
 
-      // std::cout<<"[ mapping ]: In num: "<<feats_undistort->points.size()<<" downsamp "<<feats_down_size<<" Map num: "<<featsFromMapNum<<"effect num:"<<effct_feat_num<<std::endl;
+      feats_down_size = feats_down_body->points.size();
 
       /*** ICP and iterated Kalman filter update ***/
       if (feats_down_size < 5)
@@ -129,7 +120,6 @@ int main(int argc, char **argv)
       }
 
       feats_down_world->resize(feats_down_size);
-
       pointSearchInd_surf.resize(feats_down_size);
       Nearest_Points.resize(feats_down_size);
 
@@ -151,11 +141,11 @@ int main(int argc, char **argv)
       publish_odometry(pubOdomAftMapped, kf);
 
       /*** add the feature points to map kdtree ***/
-      map_incremental();
+      map_incremental(feats_down_body);
 
       /******* Publish points *******/
       if (scan_pub_en)
-        publish_frame_world(pubLaserCloudFull);
+        publish_frame_world(pubLaserCloudFull, feats_undistort);
     }
 
     status = ros::ok();

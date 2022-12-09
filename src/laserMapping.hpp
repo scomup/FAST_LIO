@@ -57,8 +57,6 @@
 #include <geometry_msgs/Vector3.h>
 #include "preprocess.h"
 
-#define INIT_TIME (0.1)
-#define LASER_POINT_COV (0.001)
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
 
@@ -69,10 +67,8 @@ int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_c
 bool pcd_save_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
 
-float res_last[100000] = {0.0};
-float DET_RANGE = 300.0f;
+float det_range = 300.0f;
 const float MOV_THRESHOLD = 1.5f;
-double time_diff_lidar_to_imu = 0.0;
 
 std::mutex mtx_buffer;
 std::condition_variable sig_buffer;
@@ -83,7 +79,7 @@ std::string lid_topic, imu_topic;
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0;
+double filter_size_map_min = 0;
 double cube_len = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int iterCount = 0, feats_down_size = 0, laserCloudValidNum = 0,  pcd_index = 0;
@@ -92,25 +88,18 @@ bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 std::vector<std::vector<int>> pointSearchInd_surf;
 std::vector<BoxPointType> cub_needrm;
 std::vector<PointVector> Nearest_Points;
-std::vector<double> extrinT(3, 0.0);
-std::vector<double> extrinR(9, 0.0);
 std::deque<double> time_buffer;
 std::deque<PointCloud::Ptr> lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
-PointCloud::Ptr feats_undistort(new PointCloud());
-PointCloud::Ptr feats_down_body(new PointCloud());
-PointCloud::Ptr feats_down_world(new PointCloud());
 
-pcl::VoxelGrid<PointType> downSizeFilterSurf;
+PointCloud::Ptr feats_down_world(new PointCloud());
 
 KD_TREE<PointType> ikdtree;
 
 Vec3 XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 Vec3 XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
 Vec3 position_last(Zero3d);
-Vec3 Lidar_T_wrt_IMU(Zero3d);
-Mat3 Lidar_R_wrt_IMU(Eye3d);
 
 /*** EKF inputs and output ***/
 ESEKF::State state_point;
@@ -210,25 +199,25 @@ void lasermap_fov_segment()
   {
     dist_to_map_edge[i][0] = fabs(pos_LiD(i) - LocalMap_Points.vertex_min[i]);
     dist_to_map_edge[i][1] = fabs(pos_LiD(i) - LocalMap_Points.vertex_max[i]);
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE || dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE)
+    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * det_range || dist_to_map_edge[i][1] <= MOV_THRESHOLD * det_range)
       need_move = true;
   }
   if (!need_move)
     return;
   BoxPointType New_LocalMap_Points, tmp_boxpoints;
   New_LocalMap_Points = LocalMap_Points;
-  float mov_dist = std::max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9, double(DET_RANGE * (MOV_THRESHOLD - 1)));
+  float mov_dist = std::max((cube_len - 2.0 * MOV_THRESHOLD * det_range) * 0.5 * 0.9, double(det_range * (MOV_THRESHOLD - 1)));
   for (int i = 0; i < 3; i++)
   {
     tmp_boxpoints = LocalMap_Points;
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE)
+    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * det_range)
     {
       New_LocalMap_Points.vertex_max[i] -= mov_dist;
       New_LocalMap_Points.vertex_min[i] -= mov_dist;
       tmp_boxpoints.vertex_min[i] = LocalMap_Points.vertex_max[i] - mov_dist;
       cub_needrm.push_back(tmp_boxpoints);
     }
-    else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE)
+    else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * det_range)
     {
       New_LocalMap_Points.vertex_max[i] += mov_dist;
       New_LocalMap_Points.vertex_min[i] += mov_dist;
@@ -272,7 +261,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
 
 
-  msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() - time_diff_lidar_to_imu);
 
   double timestamp = msg->header.stamp.toSec();
 
@@ -349,7 +337,28 @@ bool sync_packages(MeasureGroup &meas)
   return true;
 }
 
-void map_incremental()
+bool init_map(const PointCloud::Ptr& cloud)
+{
+  /*** initialize the map kdtree ***/
+  if (ikdtree.Root_Node == nullptr)
+  {
+    feats_down_size = cloud->points.size();
+    if (feats_down_size > 5)
+    {
+      ikdtree.set_downsample_param(filter_size_map_min);
+      feats_down_world->resize(feats_down_size);
+      for (int i = 0; i < feats_down_size; i++)
+      {
+        pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
+      }
+      ikdtree.Build(feats_down_world->points);
+      return true;
+    }
+  }
+  return false;
+}
+
+void map_incremental(PointCloud::Ptr cloud)
 {
   PointVector PointToAdd;
   PointVector PointNoNeedDownsample;
@@ -358,7 +367,7 @@ void map_incremental()
   for (int i = 0; i < feats_down_size; i++)
   {
     /* transform to world frame */
-    pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+    pointBodyToWorld(&(cloud->points[i]), &(feats_down_world->points[i]));
     /* decide if need add to map */
     if (!Nearest_Points[i].empty() && flg_EKF_inited)
     {
@@ -400,16 +409,14 @@ void map_incremental()
   add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
 }
 
-void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
+void publish_frame_world(const ros::Publisher &pubLaserCloudFull, PointCloud::Ptr& cloud)
 {
-  PointCloud::Ptr laserCloudFullRes(feats_undistort);
-  int size = laserCloudFullRes->points.size();
-  PointCloud::Ptr laserCloudWorld(
-      new PointCloud(size, 1));
+  int size = cloud->points.size();
+  PointCloud::Ptr laserCloudWorld(new PointCloud(size, 1));
 
   for (int i = 0; i < size; i++)
   {
-    RGBpointBodyToWorld(&laserCloudFullRes->points[i],
+    RGBpointBodyToWorld(&cloud->points[i],
                         &laserCloudWorld->points[i]);
   }
 
