@@ -73,6 +73,17 @@ public:
 
   ESEKF::State state_;
 
+  PointCloud::Ptr normvec;       // 特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
+  PointCloud::Ptr laserCloudOri; // 有效特征点
+  PointCloud::Ptr corr_normvect; // 有效特征点对应点法相量
+  bool point_selected_surf[100000] = {1};                   // 判断是否是有效特征点
+
+  Mapping()
+  {
+    normvec.reset(new PointCloud());  
+    laserCloudOri.reset(new PointCloud(100000, 1));
+    corr_normvect.reset(new PointCloud(100000, 1));
+  }
 
   void pointL2W(PointType const *const pi, PointType *const po)
   {
@@ -117,6 +128,114 @@ public:
       }
     }
     return false;
+  }
+
+  void h_share_model(ESEKF::dyn_share_datastruct &ekfom_data, PointCloud::Ptr &cloud,
+                     KD_TREE<PointType> &ikdtree, std::vector<PointVector> &neighborhoods, bool extrinsic_est, ESEKF::State& x_)
+  {
+    normvec->clear();
+    normvec->resize(int(cloud->points.size()));
+
+    int cloud_size = cloud->points.size();
+    laserCloudOri->clear();
+    corr_normvect->clear();
+
+    for (int i = 0; i < cloud_size; i++) // 遍历所有的特征点
+    {
+      PointType &point = cloud->points[i];
+      PointType point_world;
+
+      Vec3 p_l(point.x, point.y, point.z);
+      // 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
+      Vec3 p_global(x_.rot * (x_.Ril * p_l + x_.til) + x_.pos);
+      point_world.x = p_global(0);
+      point_world.y = p_global(1);
+      point_world.z = p_global(2);
+      point_world.intensity = point.intensity;
+
+      std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+      auto &points_near = neighborhoods[i]; // neighborhoods[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
+      if (ekfom_data.converge)
+      {
+        // 寻找point_world的最近邻的平面点
+        ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+        // 判断是否是有效匹配点，与loam系列类似，要求特征点最近邻的地图点数量>阈值，距离<阈值  满足条件的才置为true
+        point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false
+                                                                                                                            : true;
+      }
+      if (!point_selected_surf[i])
+        continue; // 如果该点不满足条件  不进行下面步骤
+
+      Eigen::Matrix<float, 4, 1> pabcd; // 平面点信息
+      point_selected_surf[i] = false;   // 将该点设置为无效点，用来判断是否满足条件
+      // 拟合平面方程ax+by+cz+d=0并求解点到平面距离
+      if (esti_plane(pabcd, points_near, 0.1f))
+      {
+        float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3); // 当前点到平面的距离
+        float s = 1 - 0.9 * fabs(pd2) / sqrt(p_l.norm());                                                      // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
+
+        if (s > 0.9) // 如果残差大于阈值，则认为该点是有效点
+        {
+          point_selected_surf[i] = true;
+          normvec->points[i].x = pabcd(0); // 存储平面的单位法向量  以及当前点到平面距离
+          normvec->points[i].y = pabcd(1);
+          normvec->points[i].z = pabcd(2);
+          normvec->points[i].intensity = pd2;
+        }
+      }
+    }
+
+    int effct_feat_num = 0; // 有效特征点的数量
+    for (int i = 0; i < cloud_size; i++)
+    {
+      if (point_selected_surf[i]) // 对于满足要求的点
+      {
+        laserCloudOri->points[effct_feat_num] = cloud->points[i];   // 把这些点重新存到laserCloudOri中
+        corr_normvect->points[effct_feat_num] = normvec->points[i]; // 存储这些点对应的法向量和到平面的距离
+        effct_feat_num++;
+      }
+    }
+
+    if (effct_feat_num < 1)
+    {
+      ekfom_data.valid = false;
+      ROS_WARN("No Effective Points! \n");
+      return;
+    }
+
+    // 雅可比矩阵H和残差向量的计算
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, 24);
+    ekfom_data.h.resize(effct_feat_num);
+
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+      Vec3 point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
+      Mat3 point_crossmat;
+      point_crossmat << SKEW_SYM_MATRX(point_);
+      Vec3 point_I_ = x_.Ril * point_ + x_.til;
+      Mat3 point_I_crossmat;
+      point_I_crossmat << SKEW_SYM_MATRX(point_I_);
+
+      // 得到对应的平面的法向量
+      const PointType &norm_p = corr_normvect->points[i];
+      Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+      // 计算雅可比矩阵H
+      Vec3 C(x_.rot.transpose() * norm_vec);
+      Vec3 A(point_I_crossmat * C);
+      if (extrinsic_est)
+      {
+        Vec3 B(point_crossmat * x_.Ril.transpose() * C);
+        ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+      }
+      else
+      {
+        ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+      }
+
+      // 残差：点面距离
+      ekfom_data.h(i) = -norm_p.intensity;
+    }
   }
 
   void updateMap(PointCloud::Ptr cloud)

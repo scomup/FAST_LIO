@@ -152,12 +152,20 @@ int main(int argc, char **argv)
 
   ESEKF::esekf kf;
 
-  kf.init(LASER_POINT_COV, max_iteration, extrinsic_est_en);
+  auto m_model = [mapping](ESEKF::dyn_share_datastruct &ekfom_data,
+                           PointCloud::Ptr &cloud,
+                           KD_TREE<PointType> &ikdtree,
+                           std::vector<PointVector> &neighborhoods,
+                           bool extrinsic_est,
+                           ESEKF::State& x){mapping->h_share_model(ekfom_data, cloud, ikdtree, neighborhoods, extrinsic_est, x);};
+
+
+  kf.init(LASER_POINT_COV, max_iteration, extrinsic_est_en, m_model);
 
   std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
 
 
-  memset(ESEKF::point_selected_surf, true, sizeof(ESEKF::point_selected_surf));
+  memset(mapping->point_selected_surf, true, sizeof(mapping->point_selected_surf));
 
   pcl::VoxelGrid<PointType> downsampe_filter;
   downsampe_filter.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
