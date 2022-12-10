@@ -8,6 +8,7 @@ bool flg_exit = false;
 std::mutex mtx_;
 
 double last_timestamp_lidar_ = 0, last_timestamp_imu_ = -1.0;
+double lidar_end_time_ = 0;
 
 std::deque<double> time_buffer_;
 std::deque<PointCloud::Ptr> lidar_buffer_;
@@ -89,7 +90,7 @@ bool syncData(SensorData &sensor_data)
       lidar_mean_scantime += (sensor_data.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
     }
 
-    sensor_data.lidar_end_time_ = lidar_end_time_;
+    sensor_data.lidar_end_time = lidar_end_time_;
 
     lidar_pushed_ = true;
   }
@@ -129,14 +130,14 @@ int main(int argc, char **argv)
   bool extrinsic_est_en = true;
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 
-
+  Mapping* mapping = new Mapping();
   std::vector<double> extrinT = {0, 0, 0};
   std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<int>("max_iteration", max_iteration, 4);
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
-  nh.param<double>("filter_size_map", filter_size_map_, 0.5);
+  nh.param<double>("filter_size_map", mapping->filter_size_map_, 0.5);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -171,14 +172,11 @@ int main(int argc, char **argv)
   p_imu->set_gyr_bias_cov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
   p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
-  /*** ROS subscribe initialization ***/
+  // ROS subscribe initialization
   ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, cloudCB);
   ros::Subscriber sub_imu = nh.subscribe("/imu/data", 200000, imuCB);
   ros::Publisher pub_cloud = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
-  ros::Publisher pub_cloud_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
-  ros::Publisher pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100000);
-  ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100000);
-  ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
+  ros::Publisher pub_odom = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
   //------------------------------------------------------------------------------------------------------
 
   SensorData sensor_data;
@@ -215,41 +213,41 @@ int main(int argc, char **argv)
         continue;
       }
 
-      /*** Segment the map in lidar FOV ***/
-      state_ = kf.get_x();
+      // Segment the map in lidar FOV 
+      mapping->state_ = kf.get_x();
       //Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
       //updateMapArea(pos_lid);
 
-      /*** downsample the feature points in a scan ***/
+      // downsample the feature points in a scan 
       downsampe_filter.setInputCloud(cloud_deskew);
       downsampe_filter.filter(*cloud_ds);
 
-      if(initMap(cloud_ds))
+      if(mapping->initMap(cloud_ds))
       {
         continue;
       }
 
       int cloud_size = cloud_ds->points.size();
 
-      /*** ICP and iterated Kalman filter update ***/
+      //  ICP and iterated Kalman filter update 
       if (cloud_size < 5)
       {
         ROS_WARN("No point, skip this scan!\n");
         continue;
       }
 
-      /*** iterated state estimation ***/
-      kf.iterated_update(cloud_ds, ikdtree_, neighbor_array_);
+      //  iterated state estimation
+      kf.iterated_update(cloud_ds, mapping->ikdtree_, mapping->neighbor_array_);
 
-      /******* Publish odometry *******/
-      publish_odometry(pubOdomAftMapped, kf);
+      //  Publish odometry 
+      mapping->pubOdom(pub_odom, kf, lidar_end_time_);
 
-      /*** add the feature points to map kdtree ***/
-      updateMap(cloud_ds);
+      //  add the feature points to map kdtree 
+      mapping->updateMap(cloud_ds);
 
-      /******* Publish points *******/
+      //  Publish points 
       if (scan_pub_en)
-        pubCloud(pub_cloud, cloud_deskew);
+        mapping->pubCloud(pub_cloud, cloud_deskew, lidar_end_time_);
     }
 
     status = ros::ok();
