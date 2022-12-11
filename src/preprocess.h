@@ -1,3 +1,5 @@
+#pragma once
+
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -34,18 +36,17 @@ class Preprocess
 public:
   //   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  Preprocess();
+  Preprocess(double blind, int time_unit, int point_filter_num);
   ~Preprocess();
 
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out);
-  void set(double bld, int pfilt_num);
 
   PointCloud pl_; // cloud in lidar frame.
-  int point_filter_num, time_unit;
-  double blind;
-  double time_unit_scale;
+  int point_filter_num_, time_unit_;
+  double blind_;
+  double time_unit_scale_;
 
 private:
-  void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
 };

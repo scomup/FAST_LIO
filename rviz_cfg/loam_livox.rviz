@@ -43,7 +43,7 @@ Visualization Manager:
   Class: ""
   Displays:
     - Alpha: 1
-      Cell Size: 1
+      Cell Size: 10
       Class: rviz/Grid
       Color: 160; 160; 164
       Enabled: true
@@ -332,16 +332,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 136.39451599121094
+      Distance: 229.51580810546875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -8.428227424621582
-        Y: 17.907991409301758
-        Z: -2.9941279888153076
+        X: -30.756887435913086
+        Y: -5.658107280731201
+        Z: -2.973045587539673
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -350,7 +350,7 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: global
       Value: Orbit (rviz)
-      Yaw: 6.274545192718506
+      Yaw: 1.67635977268219
     Saved: ~
 Window Geometry:
   Displays:

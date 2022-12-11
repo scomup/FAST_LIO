@@ -1,4 +1,6 @@
-#include "mapping.hpp"
+#include "mapping.h"
+#include "backpropagation.hpp"
+#include "preprocess.h"
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
@@ -17,7 +19,7 @@ std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
 double lidar_mean_scantime = 0.0;
 int scan_num = 0;
 bool lidar_pushed_;
-
+std::shared_ptr<Preprocess> p_pre_g;
 
 void SigHandle(int sig)
 {
@@ -35,7 +37,7 @@ void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
   }
 
   PointCloud::Ptr ptr(new PointCloud());
-  p_pre_->process(msg, ptr);
+  p_pre_g->process(msg, ptr);
   lidar_buffer_.push_back(ptr);
   time_buffer_.push_back(msg->header.stamp.toSec());
   last_timestamp_lidar_ = msg->header.stamp.toSec();
@@ -130,8 +132,12 @@ int main(int argc, char **argv)
   double filter_size_surf_min = 0;
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
   bool extrinsic_est = true;
-  std::vector<double> extrinT = {0, 0, 0};
-  std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+  std::vector<double> extrin_trans = {0, 0, 0};
+  std::vector<double> extrin_rot = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  double blind;
+  int time_unit;
+  int point_filter_num;
 
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<int>("max_iteration", max_iteration, 4);
@@ -141,13 +147,16 @@ int main(int argc, char **argv)
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
   nh.param<double>("mapping/b_acc_cov", b_acc_cov, 0.0001);
-  nh.param<double>("preprocess/blind", p_pre_->blind, 0.01);
-  nh.param<int>("preprocess/timestamp_unit", p_pre_->time_unit, US);
-  nh.param<int>("point_filter_num", p_pre_->point_filter_num, 2);
+  nh.param<double>("preprocess/blind", blind, 0.01);
+  nh.param<int>("preprocess/timestamp_unit", time_unit, US);
+  nh.param<int>("point_filter_num", point_filter_num, 2);
   nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est, false);
+  nh.param<std::vector<double>>("mapping/extrinsic_T", extrin_trans, std::vector<double>());
+  nh.param<std::vector<double>>("mapping/extrinsic_R", extrin_rot, std::vector<double>());
 
-  nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
-  nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
+  std::shared_ptr<Preprocess> p_pre(new Preprocess(blind, time_unit, point_filter_num));
+
+  p_pre_g = p_pre;
 
   Mapping* mapping = new Mapping(extrinsic_est, filter_size_map);
 
@@ -164,8 +173,8 @@ int main(int argc, char **argv)
 
   Vec3 til;
   Mat3 Ril;
-  til << VEC_FROM_ARRAY(extrinT);
-  Ril << MAT_FROM_ARRAY(extrinR);
+  til << VEC_FROM_ARRAY(extrin_trans);
+  Ril << MAT_FROM_ARRAY(extrin_rot);
   p_imu->setExtrinsic(til, Ril);
   p_imu->setGyrCov(Vec3(gyr_cov, gyr_cov, gyr_cov));
   p_imu->setAccCov(Vec3(acc_cov, acc_cov, acc_cov));
@@ -214,7 +223,8 @@ int main(int argc, char **argv)
       }
 
       // Segment the map in lidar FOV 
-      mapping->state_ = kf.getState();
+      auto state = kf.getState();
+      mapping->setState(state);
       //Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
       //updateMapArea(pos_lid);
 

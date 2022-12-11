@@ -7,7 +7,6 @@
 #include <csignal>
 #include <ros/ros.h>
 #include <Eigen/Eigen>
-#include <common_lib.h>
 #include <pcl/common/io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
