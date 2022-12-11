@@ -127,7 +127,7 @@ int main(int argc, char **argv)
   bool scan_pub_en = false;
   int max_iteration;
   double filter_size_surf_min = 0;
-  bool extrinsic_est_en = true;
+  bool extrinsic_est_en = false;
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 
   Mapping* mapping = new Mapping();
@@ -145,27 +145,18 @@ int main(int argc, char **argv)
   nh.param<double>("preprocess/blind", p_pre_->blind, 0.01);
   nh.param<int>("preprocess/timestamp_unit", p_pre_->time_unit, US);
   nh.param<int>("point_filter_num", p_pre_->point_filter_num, 2);
-  nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
+  nh.param<bool>("mapping/extrinsic_est_en", mapping->extrinsic_est_, false);
 
   nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
   nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
 
-  ESEKF::esekf kf;
+  auto h_model = [mapping](ESEKF::HData &ekfom_data,
+                           ESEKF::State &x,
+                           PointCloud::Ptr &cloud){mapping->h_model(ekfom_data, x, cloud); };
 
-  auto m_model = [mapping](ESEKF::dyn_share_datastruct &ekfom_data,
-                           PointCloud::Ptr &cloud,
-                           KD_TREE<PointType> &ikdtree,
-                           std::vector<PointVector> &neighborhoods,
-                           bool extrinsic_est,
-                           ESEKF::State& x){mapping->h_share_model(ekfom_data, cloud, ikdtree, neighborhoods, extrinsic_est, x);};
-
-
-  kf.init(LASER_POINT_COV, max_iteration, extrinsic_est_en, m_model);
+  ESEKF::esekf kf(LASER_POINT_COV, max_iteration, h_model);
 
   std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
-
-
-  memset(mapping->point_selected_surf, true, sizeof(mapping->point_selected_surf));
 
   pcl::VoxelGrid<PointType> downsampe_filter;
   downsampe_filter.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);

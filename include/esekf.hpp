@@ -17,7 +17,7 @@ namespace ESEKF
 {
   const double epsi = 0.001; // ESKF迭代时，如果dx<epsi 认为收敛
 
-  struct dyn_share_datastruct
+  struct HData
   {
     bool valid;                                                // 有效特征点数量是否满足要求
     bool converge;                                             // 迭代时，是否已经收敛
@@ -155,19 +155,10 @@ namespace ESEKF
   public:
     typedef Eigen::Matrix<double, SZ, SZ> Cov;     // 24X24的协方差矩阵
     typedef Eigen::Matrix<double, SZ, 1> StateVec; // 24X1的向量
-    using measurementModel_dyn_share = std::function<void(ESEKF::dyn_share_datastruct &, PointCloud::Ptr &,
-                                                          KD_TREE<PointType> &, std::vector<PointVector> &, bool, State&)>;
+    using HFunc = std::function<void(ESEKF::HData&, ESEKF::State&, PointCloud::Ptr&)>;
 
-    esekf(){};
+    esekf(double R, int maximum_iter, HFunc h_model) : R_(R), maximum_iter_(maximum_iter), h_model_(h_model){};
     ~esekf(){};
-
-    void init(double R, int maximum_iter, bool extrinsic_est, measurementModel_dyn_share m_model)
-    {
-      R_ = R;
-      maximum_iter_ = maximum_iter;
-      extrinsic_est_ = extrinsic_est;
-      m_model_ = m_model;
-    }
 
     State get_x() const
     {
@@ -208,7 +199,7 @@ namespace ESEKF
     {
       neighborhoods.resize(int(cloud_ds->points.size()));
 
-      dyn_share_datastruct dyn_share;
+      HData dyn_share;
       dyn_share.valid = true;
       dyn_share.converge = true;
       int t = 0;
@@ -221,7 +212,7 @@ namespace ESEKF
       {
         dyn_share.valid = true;
         // 计算雅克比，也就是点面残差的导数 H(代码里是h_x)
-        m_model_(dyn_share, cloud_ds, ikdtree, neighborhoods, extrinsic_est_, x_);
+        h_model_(dyn_share, x_, cloud_ds);
 
         if (!dyn_share.valid)
         {
@@ -250,7 +241,7 @@ namespace ESEKF
         if (dyn_share.converge)
           t++;
 
-        if (!t && i == maximum_iter_ - 2) // 如果迭代了3次还没收敛 强制令成true，h_share_model函数中会重新寻找近邻点
+        if (!t && i == maximum_iter_ - 2) // 如果迭代了3次还没收敛 强制令成true，h_model函数中会重新寻找近邻点
         {
           dyn_share.converge = true;
         }
@@ -268,8 +259,7 @@ namespace ESEKF
     Cov P_ = Cov::Identity();
     double R_;
     int maximum_iter_;
-    bool extrinsic_est_;
-    measurementModel_dyn_share m_model_;
+    HFunc h_model_;
   };
 }
 #endif //  ESEKFOM_EKF_HPP1

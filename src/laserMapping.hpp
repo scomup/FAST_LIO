@@ -67,6 +67,8 @@ class Mapping
 public:
   double filter_size_map_ = 0;
 
+  bool extrinsic_est_ = true;
+
   std::vector<PointVector> neighbor_array_;
 
   KD_TREE<PointType> ikdtree_;
@@ -130,8 +132,7 @@ public:
     return false;
   }
 
-  void h_share_model(ESEKF::dyn_share_datastruct &ekfom_data, PointCloud::Ptr &cloud,
-                     KD_TREE<PointType> &ikdtree, std::vector<PointVector> &neighborhoods, bool extrinsic_est, ESEKF::State& x_)
+  void h_model(ESEKF::HData &ekfom_data, ESEKF::State& state, PointCloud::Ptr &cloud)
   {
     normvec->clear();
     normvec->resize(int(cloud->points.size()));
@@ -147,18 +148,18 @@ public:
 
       Vec3 p_l(point.x, point.y, point.z);
       // 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
-      Vec3 p_global(x_.rot * (x_.Ril * p_l + x_.til) + x_.pos);
+      Vec3 p_global(state.rot * (state.Ril * p_l + state.til) + state.pos);
       point_world.x = p_global(0);
       point_world.y = p_global(1);
       point_world.z = p_global(2);
       point_world.intensity = point.intensity;
 
       std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-      auto &points_near = neighborhoods[i]; // neighborhoods[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
+      auto &points_near = neighbor_array_[i]; // neighbor_array_[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
       if (ekfom_data.converge)
       {
         // 寻找point_world的最近邻的平面点
-        ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+        ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
         // 判断是否是有效匹配点，与loam系列类似，要求特征点最近邻的地图点数量>阈值，距离<阈值  满足条件的才置为true
         point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false
                                                                                                                             : true;
@@ -212,7 +213,7 @@ public:
       Vec3 point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
       Mat3 point_crossmat;
       point_crossmat << SKEW_SYM_MATRX(point_);
-      Vec3 point_I_ = x_.Ril * point_ + x_.til;
+      Vec3 point_I_ = state.Ril * point_ + state.til;
       Mat3 point_I_crossmat;
       point_I_crossmat << SKEW_SYM_MATRX(point_I_);
 
@@ -221,11 +222,11 @@ public:
       Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
       // 计算雅可比矩阵H
-      Vec3 C(x_.rot.transpose() * norm_vec);
+      Vec3 C(state.rot.transpose() * norm_vec);
       Vec3 A(point_I_crossmat * C);
-      if (extrinsic_est)
+      if (extrinsic_est_)
       {
-        Vec3 B(point_crossmat * x_.Ril.transpose() * C);
+        Vec3 B(point_crossmat * state.Ril.transpose() * C);
         ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
       }
       else
