@@ -42,7 +42,7 @@
 #include <Python.h>
 #include <ros/ros.h>
 #include <Eigen/Core>
-#include "IMU_Processing.hpp"
+#include "backpropagation.hpp"
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/Marker.h>
@@ -75,16 +75,18 @@ public:
 
   ESEKF::State state_;
 
-  PointCloud::Ptr normvec;       // 特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
-  PointCloud::Ptr laserCloudOri; // 有效特征点
-  PointCloud::Ptr corr_normvect; // 有效特征点对应点法相量
+  PointCloud::Ptr norm_vec;       // 特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
+  PointCloud::Ptr laser_cloud_origin; // 有效特征点
+  PointCloud::Ptr corr_norm_vect; // 有效特征点对应点法相量
   bool point_selected_surf[100000] = {1};                   // 判断是否是有效特征点
 
-  Mapping()
+  Mapping(bool extrinsic_est, double filter_size_map)
   {
-    normvec.reset(new PointCloud());  
-    laserCloudOri.reset(new PointCloud(100000, 1));
-    corr_normvect.reset(new PointCloud(100000, 1));
+    norm_vec.reset(new PointCloud());  
+    laser_cloud_origin.reset(new PointCloud(100000, 1));
+    corr_norm_vect.reset(new PointCloud(100000, 1));
+    extrinsic_est_ = extrinsic_est;
+    filter_size_map_ = filter_size_map;
   }
 
   void pointL2W(PointType const *const pi, PointType *const po)
@@ -132,14 +134,16 @@ public:
     return false;
   }
 
-  void h_model(ESEKF::HData &ekfom_data, ESEKF::State& state, PointCloud::Ptr &cloud)
+  void hModel(ESEKF::HData &ekfom_data, ESEKF::State& state, PointCloud::Ptr &cloud)
   {
-    normvec->clear();
-    normvec->resize(int(cloud->points.size()));
-
     int cloud_size = cloud->points.size();
-    laserCloudOri->clear();
-    corr_normvect->clear();
+    norm_vec->clear();
+    norm_vec->resize(cloud_size);
+
+    neighbor_array_.resize(cloud_size);
+    
+    laser_cloud_origin->clear();
+    corr_norm_vect->clear();
 
     for (int i = 0; i < cloud_size; i++) // 遍历所有的特征点
     {
@@ -178,10 +182,10 @@ public:
         if (s > 0.9) // 如果残差大于阈值，则认为该点是有效点
         {
           point_selected_surf[i] = true;
-          normvec->points[i].x = pabcd(0); // 存储平面的单位法向量  以及当前点到平面距离
-          normvec->points[i].y = pabcd(1);
-          normvec->points[i].z = pabcd(2);
-          normvec->points[i].intensity = pd2;
+          norm_vec->points[i].x = pabcd(0); // 存储平面的单位法向量  以及当前点到平面距离
+          norm_vec->points[i].y = pabcd(1);
+          norm_vec->points[i].z = pabcd(2);
+          norm_vec->points[i].intensity = pd2;
         }
       }
     }
@@ -191,8 +195,8 @@ public:
     {
       if (point_selected_surf[i]) // 对于满足要求的点
       {
-        laserCloudOri->points[effct_feat_num] = cloud->points[i];   // 把这些点重新存到laserCloudOri中
-        corr_normvect->points[effct_feat_num] = normvec->points[i]; // 存储这些点对应的法向量和到平面的距离
+        laser_cloud_origin->points[effct_feat_num] = cloud->points[i];   // 把这些点重新存到laser_cloud_origin中
+        corr_norm_vect->points[effct_feat_num] = norm_vec->points[i]; // 存储这些点对应的法向量和到平面的距离
         effct_feat_num++;
       }
     }
@@ -205,12 +209,12 @@ public:
     }
 
     // 雅可比矩阵H和残差向量的计算
-    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, 24);
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, ESEKF::SZ);
     ekfom_data.h.resize(effct_feat_num);
 
     for (int i = 0; i < effct_feat_num; i++)
     {
-      Vec3 point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
+      Vec3 point_(laser_cloud_origin->points[i].x, laser_cloud_origin->points[i].y, laser_cloud_origin->points[i].z);
       Mat3 point_crossmat;
       point_crossmat << SKEW_SYM_MATRX(point_);
       Vec3 point_I_ = state.Ril * point_ + state.til;
@@ -218,7 +222,7 @@ public:
       point_I_crossmat << SKEW_SYM_MATRX(point_I_);
 
       // 得到对应的平面的法向量
-      const PointType &norm_p = corr_normvect->points[i];
+      const PointType &norm_p = corr_norm_vect->points[i];
       Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
       // 计算雅可比矩阵H
@@ -227,11 +231,11 @@ public:
       if (extrinsic_est_)
       {
         Vec3 B(point_crossmat * state.Ril.transpose() * C);
-        ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+        ekfom_data.h_x.block<1, ESEKF::NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
       }
       else
       {
-        ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        ekfom_data.h_x.block<1, ESEKF::NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
       }
 
       // 残差：点面距离

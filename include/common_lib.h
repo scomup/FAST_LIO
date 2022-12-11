@@ -90,12 +90,12 @@ bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &point, co
     A(j, 2) = point[j].z;
   }
 
-  Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+  Eigen::Matrix<T, 3, 1> norm_vec = A.colPivHouseholderQr().solve(b);
 
-  T n = normvec.norm();
-  pca_result(0) = normvec(0) / n;
-  pca_result(1) = normvec(1) / n;
-  pca_result(2) = normvec(2) / n;
+  T n = norm_vec.norm();
+  pca_result(0) = norm_vec(0) / n;
+  pca_result(1) = norm_vec(1) / n;
+  pca_result(2) = norm_vec(2) / n;
   pca_result(3) = 1.0 / n;
 
   for (int j = 0; j < NUM_MATCH_POINTS; j++)

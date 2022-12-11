@@ -1,4 +1,4 @@
-#include "laserMapping.hpp"
+#include "mapping.hpp"
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
@@ -126,18 +126,17 @@ int main(int argc, char **argv)
 
   bool scan_pub_en = false;
   int max_iteration;
+  double filter_size_map;
   double filter_size_surf_min = 0;
-  bool extrinsic_est_en = false;
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-
-  Mapping* mapping = new Mapping();
+  bool extrinsic_est = true;
   std::vector<double> extrinT = {0, 0, 0};
   std::vector<double> extrinR = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<int>("max_iteration", max_iteration, 4);
   nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
-  nh.param<double>("filter_size_map", mapping->filter_size_map_, 0.5);
+  nh.param<double>("filter_size_map", filter_size_map, 0.5);
   nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
   nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
   nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -145,18 +144,20 @@ int main(int argc, char **argv)
   nh.param<double>("preprocess/blind", p_pre_->blind, 0.01);
   nh.param<int>("preprocess/timestamp_unit", p_pre_->time_unit, US);
   nh.param<int>("point_filter_num", p_pre_->point_filter_num, 2);
-  nh.param<bool>("mapping/extrinsic_est_en", mapping->extrinsic_est_, false);
+  nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est, false);
 
   nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT, std::vector<double>());
   nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR, std::vector<double>());
 
+  Mapping* mapping = new Mapping(extrinsic_est, filter_size_map);
+
   auto h_model = [mapping](ESEKF::HData &ekfom_data,
                            ESEKF::State &x,
-                           PointCloud::Ptr &cloud){mapping->h_model(ekfom_data, x, cloud); };
+                           PointCloud::Ptr &cloud){mapping->hModel(ekfom_data, x, cloud); };
 
   ESEKF::esekf kf(LASER_POINT_COV, max_iteration, h_model);
 
-  std::shared_ptr<ImuProcess> p_imu(new ImuProcess());
+  std::shared_ptr<BacKPropagationIMU> p_imu(new BacKPropagationIMU());
 
   pcl::VoxelGrid<PointType> downsampe_filter;
   downsampe_filter.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
@@ -165,11 +166,11 @@ int main(int argc, char **argv)
   Mat3 Ril;
   til << VEC_FROM_ARRAY(extrinT);
   Ril << MAT_FROM_ARRAY(extrinR);
-  p_imu->set_extrinsic(til, Ril);
-  p_imu->set_gyr_cov(Vec3(gyr_cov, gyr_cov, gyr_cov));
-  p_imu->set_acc_cov(Vec3(acc_cov, acc_cov, acc_cov));
-  p_imu->set_gyr_bias_cov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-  p_imu->set_acc_bias_cov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
+  p_imu->setExtrinsic(til, Ril);
+  p_imu->setGyrCov(Vec3(gyr_cov, gyr_cov, gyr_cov));
+  p_imu->setAccCov(Vec3(acc_cov, acc_cov, acc_cov));
+  p_imu->setGyrBiasCov(Vec3(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+  p_imu->setAccBiasCov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
   // ROS subscribe initialization
   ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, cloudCB);
@@ -203,7 +204,7 @@ int main(int argc, char **argv)
       }
 
 
-      p_imu->Process(sensor_data, kf, cloud_deskew); // deskew lidar points. by backward propagation
+      p_imu->process(sensor_data, kf, cloud_deskew); // deskew lidar points. by backward propagation
 
 
       if (cloud_deskew->empty() || (cloud_deskew == NULL))
@@ -213,7 +214,7 @@ int main(int argc, char **argv)
       }
 
       // Segment the map in lidar FOV 
-      mapping->state_ = kf.get_x();
+      mapping->state_ = kf.getState();
       //Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
       //updateMapArea(pos_lid);
 
@@ -236,7 +237,7 @@ int main(int argc, char **argv)
       }
 
       //  iterated state estimation
-      kf.iterated_update(cloud_ds, mapping->ikdtree_, mapping->neighbor_array_);
+      kf.iteratedUpdate(cloud_ds);
 
       //  Publish odometry 
       mapping->pubOdom(pub_odom, kf, lidar_end_time_);

@@ -99,7 +99,7 @@ namespace ESEKF
     Eigen::Vector3d gyro = Eigen::Vector3d(0, 0, 0);
   };
 
-  Eigen::Matrix<double, NZ, NZ> process_noise_cov()
+  Eigen::Matrix<double, NZ, NZ> processNoiseCov()
   {
     Eigen::Matrix<double, NZ, NZ> Q = Eigen::MatrixXd::Zero(NZ, NZ);
 
@@ -160,7 +160,7 @@ namespace ESEKF
     esekf(double R, int maximum_iter, HFunc h_model) : R_(R), maximum_iter_(maximum_iter), h_model_(h_model){};
     ~esekf(){};
 
-    State get_x() const
+    State getState() const
     {
       return x_;
     }
@@ -193,12 +193,8 @@ namespace ESEKF
     // 计算每个特征点的残差及H矩阵
 
     // ESKF
-    void iterated_update(PointCloud::Ptr &cloud_ds,
-                         KD_TREE<PointType> &ikdtree,
-                         std::vector<PointVector> &neighborhoods)
+    void iteratedUpdate(PointCloud::Ptr &cloud_ds)
     {
-      neighborhoods.resize(int(cloud_ds->points.size()));
-
       HData dyn_share;
       dyn_share.valid = true;
       dyn_share.converge = true;
