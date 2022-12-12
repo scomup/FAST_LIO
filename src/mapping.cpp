@@ -26,9 +26,6 @@
 
 Mapping::Mapping(bool extrinsic_est, double filter_size_map)
 {
-  norm_vec.reset(new PointCloud());
-  laser_cloud_origin.reset(new PointCloud(100000, 1));
-  corr_norm_vect.reset(new PointCloud(100000, 1));
   extrinsic_est_ = extrinsic_est;
   filter_size_map_ = filter_size_map;
 }
@@ -83,16 +80,13 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud)
   return false;
 }
 
-void Mapping::hModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::Ptr &cloud)
+void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr &cloud)
 {
   int cloud_size = cloud->points.size();
-  norm_vec->clear();
-  norm_vec->resize(cloud_size);
-
+  PointCloud::Ptr norm_vec(new PointCloud(cloud_size, 1));
   neighbor_array_.resize(cloud_size);
 
-  laser_cloud_origin->clear();
-  corr_norm_vect->clear();
+  std::vector<int> good_index;
 
   for (int i = 0; i < cloud_size; i++) // 遍历所有的特征点
   {
@@ -109,86 +103,78 @@ void Mapping::hModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::
 
     std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
     auto &points_near = neighbor_array_[i]; // neighbor_array_[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
-    if (ekfom_data.converge)
+    if (h_data.converge)
     {
       // 寻找point_world的最近邻的平面点
       ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-      // 判断是否是有效匹配点，与loam系列类似，要求特征点最近邻的地图点数量>阈值，距离<阈值  满足条件的才置为true
-      point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false
-                                                                                                                          : true;
+
+      if(points_near.size() < NUM_MATCH_POINTS)
+        continue;
+      if(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
+        continue;
     }
-    if (!point_selected_surf[i])
-      continue; // 如果该点不满足条件  不进行下面步骤
 
-    Eigen::Matrix<double, 4, 1> pabcd; // 平面点信息
-    point_selected_surf[i] = false;   // 将该点设置为无效点，用来判断是否满足条件
-    // 拟合平面方程ax+by+cz+d=0并求解点到平面距离
-    if (esti_plane(pabcd, points_near, 0.1))
+    Eigen::Matrix<double, 4, 1> plane;
+
+    if (esti_plane(plane, points_near, 0.1))
     {
-      float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3); // 当前点到平面的距离
-      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_l.norm());                                                      // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
+      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); // 当前点到平面的距离
+      float s = 1 - 0.9 * fabs(r) / sqrt(p_l.norm());                                                      // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
 
-      if (s > 0.9) // 如果残差大于阈值，则认为该点是有效点
-      {
-        point_selected_surf[i] = true;
-        norm_vec->points[i].x = pabcd(0); // 存储平面的单位法向量  以及当前点到平面距离
-        norm_vec->points[i].y = pabcd(1);
-        norm_vec->points[i].z = pabcd(2);
-        norm_vec->points[i].intensity = pd2;
-      }
+      if (s < 0.9) 
+        continue;
+
+      good_index.push_back(i);
+
+      norm_vec->points[i].x = plane(0); // 存储平面的单位法向量  以及当前点到平面距离
+      norm_vec->points[i].y = plane(1);
+      norm_vec->points[i].z = plane(2);
+      norm_vec->points[i].intensity = r;
     }
   }
 
-  int effct_feat_num = 0; // 有效特征点的数量
-  for (int i = 0; i < cloud_size; i++)
+  if (good_index.size() < 1)
   {
-    if (point_selected_surf[i]) // 对于满足要求的点
-    {
-      laser_cloud_origin->points[effct_feat_num] = cloud->points[i]; // 把这些点重新存到laser_cloud_origin中
-      corr_norm_vect->points[effct_feat_num] = norm_vec->points[i];  // 存储这些点对应的法向量和到平面的距离
-      effct_feat_num++;
-    }
-  }
-
-  if (effct_feat_num < 1)
-  {
-    ekfom_data.valid = false;
+    h_data.valid = false;
     ROS_WARN("No Effective Points! \n");
     return;
   }
 
-  // 雅可比矩阵H和残差向量的计算
-  ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, ESEKF::SZ);
-  ekfom_data.h.resize(effct_feat_num);
+  h_data.h_x = Eigen::MatrixXd::Zero(good_index.size(), ESEKF::SZ);
+  h_data.h.resize(good_index.size());
 
-  for (int i = 0; i < effct_feat_num; i++)
+  for (int idx = 0; idx < good_index.size(); idx++)
   {
-    Vec3 point_(laser_cloud_origin->points[i].x, laser_cloud_origin->points[i].y, laser_cloud_origin->points[i].z);
-    Mat3 point_crossmat;
-    point_crossmat << SKEW_SYM_MATRX(point_);
-    Vec3 point_I_ = state.Ril * point_ + state.til;
-    Mat3 point_I_crossmat;
-    point_I_crossmat << SKEW_SYM_MATRX(point_I_);
+    int i = good_index[idx];
 
-    // 得到对应的平面的法向量
-    const PointType &norm_p = corr_norm_vect->points[i];
+    Vec3 point = cloud->points[i].getVector3fMap().template cast<double>();
+
+    Mat3 point_skew  = skewSymMat(point);
+
+    Vec3 point_i = state.Ril * point + state.til;
+    Mat3 point_i_skew = skewSymMat(point_i);
+
+    const PointType &norm_p = norm_vec->points[i];
     Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
-    // 计算雅可比矩阵H
     Vec3 C(state.rot.transpose() * norm_vec);
-    Vec3 A(point_I_crossmat * C);
+    Vec3 A(point_i_skew * C);
     if (extrinsic_est_)
     {
-      Vec3 B(point_crossmat * state.Ril.transpose() * C);
-      ekfom_data.h_x.block<1, ESEKF::NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+      Vec3 B(point_skew * state.Ril.transpose() * C);
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_R) = A;
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_Rli) = B;
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_Tli) = C;
     }
     else
     {
-      ekfom_data.h_x.block<1, ESEKF::NZ>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h_x.block<1, 3>(idx, ESEKF::L_R) = A;
     }
 
     // 残差：点面距离
-    ekfom_data.h(i) = -norm_p.intensity;
+    h_data.h(idx) = -norm_p.intensity;
   }
 }
 

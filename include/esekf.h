@@ -54,6 +54,7 @@ namespace ESEKF
     double R_;
     int maximum_iter_;
     HFunc h_model_;
+    const double epsi_ = 0.001;
   };
 }
 #endif //  ESEKFOM_EKF_HPP1

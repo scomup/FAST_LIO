@@ -80,11 +80,11 @@ namespace ESEKF
   }
 
   // Forward Propagation  III-C
-  void Esekf::predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in)
+  void Esekf::predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &u)
   {
-    Eigen::Matrix<double, SZ, 1> f = f_func(x_, i_in, dt);        // paper (3) f
-    Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, i_in, dt); // paper (7) df/dx
-    Eigen::Matrix<double, SZ, NZ> f_w = df_dw_func(x_, i_in, dt); // paper (7) df/dw
+    Eigen::Matrix<double, SZ, 1> f = f_func(x_, u, dt);        // paper (3) f
+    Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, u, dt); // paper (7) df/dx
+    Eigen::Matrix<double, SZ, NZ> f_w = df_dw_func(x_, u, dt); // paper (7) df/dw
     x_ = x_.plus(f);                                              // paper (4)
     P_ = f_x * P_ * f_x.transpose() + f_w * Q * f_w.transpose();  // paper (8) Cov of Forward Propagation
   }
@@ -126,7 +126,7 @@ namespace ESEKF
       dyn_share.converge = true;
       for (int i = 0; i < SZ; i++)
       {
-        if (std::fabs(dx[i]) > epsi) // 如果dx>epsi 认为没有收敛
+        if (std::fabs(dx[i]) > epsi_) // 如果dx>epsi_ 认为没有收敛
         {
           dyn_share.converge = false;
           break;

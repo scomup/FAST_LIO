@@ -86,8 +86,4 @@ private:
 
   ESEKF::State state_;
 
-  PointCloud::Ptr norm_vec;               // 特征点在地图中对应的平面参数(平面的单位法向量,以及当前点到平面距离)
-  PointCloud::Ptr laser_cloud_origin;     // 有效特征点
-  PointCloud::Ptr corr_norm_vect;         // 有效特征点对应点法相量
-  bool point_selected_surf[100000] = {1}; // 判断是否是有效特征点
 };
