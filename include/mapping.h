@@ -64,7 +64,7 @@ public:
 
   bool initMap(const PointCloud::Ptr &cloud);
 
-  void hModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::Ptr &cloud);
+  void point2PlaneModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::Ptr &cloud);
 
   void updateMap(PointCloud::Ptr cloud);
 

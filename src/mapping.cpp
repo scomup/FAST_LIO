@@ -38,11 +38,11 @@ void Mapping::setState(ESEKF::State &state)
 void Mapping::pointL2W(PointType const *const pi, PointType *const po)
 {
   Vec3 p_lidar(pi->x, pi->y, pi->z);
-  Vec3 p_global(state_.rot * (state_.Ril * p_lidar + state_.til) + state_.pos);
+  Vec3 pw(state_.rot * (state_.Ril * p_lidar + state_.til) + state_.pos);
 
-  po->x = p_global(0);
-  po->y = p_global(1);
-  po->z = p_global(2);
+  po->x = pw(0);
+  po->y = pw(1);
+  po->z = pw(2);
   po->intensity = pi->intensity;
 }
 
@@ -80,7 +80,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud)
   return false;
 }
 
-void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr &cloud)
+void Mapping::point2PlaneModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr &cloud)
 {
   int cloud_size = cloud->points.size();
   norms_.resize(cloud_size);
@@ -89,24 +89,22 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
 
   std::vector<int> good_index;
 
-  for (int i = 0; i < cloud_size; i++) // 遍历所有的特征点
+  for (int i = 0; i < cloud_size; i++) 
   {
     PointType &point = cloud->points[i];
     PointType point_world;
 
-    Vec3 p_l(point.x, point.y, point.z);
-    // 把Lidar坐标系的点先转到IMU坐标系，再根据前向传播估计的位姿x，转到世界坐标系
-    Vec3 p_global(state.rot * (state.Ril * p_l + state.til) + state.pos);
-    point_world.x = p_global(0);
-    point_world.y = p_global(1);
-    point_world.z = p_global(2);
+    Vec3 pl(point.x, point.y, point.z);
+    Vec3 pw(state.rot * (state.Ril * pl + state.til) + state.pos);
+    point_world.x = pw(0);
+    point_world.y = pw(1);
+    point_world.z = pw(2);
     point_world.intensity = point.intensity;
 
     std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-    auto &points_near = neighbor_array_[i]; // neighbor_array_[i]打印出来发现是按照离point_world距离，从小到大的顺序的vector
+    auto &points_near = neighbor_array_[i];
     if (h_data.converge)
     {
-      // 寻找point_world的最近邻的平面点
       ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
 
       if(points_near.size() < NUM_MATCH_POINTS)
@@ -119,8 +117,8 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
 
     if (esti_plane(plane, points_near, 0.1))
     {
-      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); // 当前点到平面的距离
-      float s = 1 - 0.9 * fabs(r) / sqrt(p_l.norm());                                                      // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻
+      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
+      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
 
       if (s < 0.9) 
         continue;

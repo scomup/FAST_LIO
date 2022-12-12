@@ -165,7 +165,7 @@ int main(int argc, char **argv)
 
   auto h_model = [mapping](ESEKF::HData &ekfom_data,
                            ESEKF::State &x,
-                           PointCloud::Ptr &cloud){mapping->hModel(ekfom_data, x, cloud); };
+                           PointCloud::Ptr &cloud){mapping->point2PlaneModel(ekfom_data, x, cloud); };
 
   ESEKF::Esekf kf(LASER_POINT_COV, max_iteration, h_model);
 

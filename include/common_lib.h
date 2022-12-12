@@ -29,6 +29,7 @@ typedef PointXYZIT PointType;
 typedef pcl::PointCloud<PointType> PointCloud;
 typedef std::vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef Eigen::Vector3d Vec3;
+typedef Eigen::Matrix<double, 4, 1> Vec4;
 typedef Eigen::Matrix3d Mat3;
 typedef Eigen::Matrix<double, 4, 4> Mat4;
 
@@ -45,7 +46,6 @@ struct SensorData // Lidar data and imu dates for the curent process
   PointCloud::Ptr lidar;
   std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
-
 
 float calc_dist(PointType p1, PointType p2);
 
