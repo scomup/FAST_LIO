@@ -33,31 +33,36 @@ namespace ESEKF
   constexpr int L_Nbw = 6;
   constexpr int L_Nba = 9;
 
+  using MatSS = Eigen::Matrix<double, SZ, SZ>; // 24X24 Cov Mat
+  using MatSN = Eigen::Matrix<double, SZ, NZ>; // 24X12 Cov Mat 
+  using MatNN = Eigen::Matrix<double, NZ, NZ>; // 12X12 Cov Mat
+  using VecS = Eigen::Matrix<double, SZ, 1>;   // 24X1 Vec
+
   // Input u (IMU)
   struct InputU
   {
-    Eigen::Vector3d acc = Eigen::Vector3d(0, 0, 0);
-    Eigen::Vector3d gyro = Eigen::Vector3d(0, 0, 0);
+    Vec3 acc = Vec3(0, 0, 0);
+    Vec3 gyro = Vec3(0, 0, 0);
   };
 
   struct State
   {
-    Eigen::Vector3d pos = Eigen::Vector3d(0, 0, 0);    // imu postion in world frame
-    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity(); // imu rotation in world frame
-    Eigen::Matrix3d Ril = Eigen::Matrix3d::Identity(); // rotation from lidar to imu
-    Eigen::Vector3d til = Eigen::Vector3d(0, 0, 0);    // translation from lidar to imu
-    Eigen::Vector3d vel = Eigen::Vector3d(0, 0, 0);
-    Eigen::Vector3d bg = Eigen::Vector3d(0, 0, 0);
-    Eigen::Vector3d ba = Eigen::Vector3d(0, 0, 0);
-    Eigen::Vector3d grav = Eigen::Vector3d(0, 0, -G_m_s2);
+    Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
+    Mat3 rot = Mat3::Identity(); // imu rotation in world frame
+    Mat3 Ril = Mat3::Identity(); // rotation from lidar to imu
+    Vec3 til = Vec3(0, 0, 0);    // translation from lidar to imu
+    Vec3 vel = Vec3(0, 0, 0);
+    Vec3 bg = Vec3(0, 0, 0);
+    Vec3 ba = Vec3(0, 0, 0);
+    Vec3 grav = Vec3(0, 0, -G_m_s2);
 
     // plus for state
-    State plus(Eigen::Matrix<double, SZ, 1> &f) const
+    State plus(VecS &f) const
     {
       State r;
       r.pos = this->pos + f.segment<3>(L_P);
-      r.rot = this->rot * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_R)));
-      r.Ril = this->Ril * Eigen::Quaterniond(SO3Expmap(f.segment<3>(L_Rli)));
+      r.rot = this->rot * SO3Expmap(f.segment<3>(L_R));
+      r.Ril = this->Ril * SO3Expmap(f.segment<3>(L_Rli));
       r.til = this->til + f.segment<3>(L_Tli);
       r.vel = this->vel + f.segment<3>(L_V);
       r.bg = this->bg + f.segment<3>(L_Bw);
@@ -67,9 +72,9 @@ namespace ESEKF
     }
 
     // minus for state
-    Eigen::Matrix<double, SZ, 1> minus(const State &x2) const
+    VecS minus(const State &x2) const
     {
-      Eigen::Matrix<double, SZ, 1> r;
+      VecS r;
       r.segment<3>(L_P) = this->pos - x2.pos;
       r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * this->rot);
       r.segment<3>(L_Rli) = SO3Logmap(x2.Ril.transpose() * this->Ril);
@@ -81,11 +86,5 @@ namespace ESEKF
       return r;
     }
 
-    Eigen::Affine3d getAffine3d() const
-    {
-      Eigen::Affine3d affine = Eigen::Translation3d(pos) * rot;
-      return affine;
-    }
-  };
 
 }

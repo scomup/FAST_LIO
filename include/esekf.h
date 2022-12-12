@@ -16,42 +16,41 @@
 namespace ESEKF
 {
 
-  Eigen::Matrix<double, NZ, NZ> processNoiseCov();
+  MatNN processNoiseCov();
 
-  Eigen::Matrix<double, SZ, 1> f_func(State state, InputU in, double dt);
-
-  Eigen::Matrix<double, SZ, SZ> df_dx_func(State s, InputU in, double dt);
-
-  Eigen::Matrix<double, SZ, NZ> df_dw_func(State s, InputU in, double dt);
 
   // Error State Extended Kalman Filter
   class Esekf
   {
   public:
-    typedef Eigen::Matrix<double, SZ, SZ> Cov;     // 24X24的协方差矩阵
-    typedef Eigen::Matrix<double, SZ, 1> StateVec; // 24X1的向量
     using HFunc = std::function<void(ESEKF::HData&, ESEKF::State&, PointCloud::Ptr&)>;
 
     Esekf(double R, int maximum_iter, HFunc h_model);
 
     State getState() const;
 
-    Cov get_P() const;
+    MatSS get_P() const;
 
     void change_x(State &input_state);
 
-    void change_P(Cov &input_cov);
+    void change_P(MatSS &input_cov);
 
     // Forward Propagation  III-C
-    void predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in);
+    void predict(double &dt, MatNN &Q, const InputU &i_in);
 
     // update
     void iteratedUpdate(PointCloud::Ptr &cloud_ds);
 
   private:
+    VecS f_func(State state, InputU in, double dt);
+
+    MatSS df_dx_func(State s, InputU in, double dt);
+
+    MatSN df_dw_func(State s, InputU in, double dt);
+
     State x_;
-    Cov P_ = Cov::Identity();
-    double R_;
+    MatSS P_ = MatSS::Identity();
+    double R_inv_;
     int maximum_iter_;
     HFunc h_model_;
     const double epsi_ = 0.001;
