@@ -120,16 +120,16 @@ void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::Esekf &kf_st
   init_state.bg = mean_gyr;
   init_state.til = Lidar_T_wrt_IMU;
   init_state.Ril = Eigen::Quaterniond(Lidar_R_wrt_IMU);
-  kf_state.change_x(init_state);
+  kf_state.setState(init_state);
 
-  Eigen::Matrix<double, ESEKF::SZ, ESEKF::SZ> init_P = kf_state.get_P();
+  Eigen::Matrix<double, ESEKF::SZ, ESEKF::SZ> init_P = kf_state.getP();
   init_P.setIdentity();
   init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;
   init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;
   init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;
   init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;
   init_P(21, 21) = init_P(22, 22) = 0.00001;
-  kf_state.change_P(init_P);
+  kf_state.setP(init_P);
   last_imu_ = sensor_data.imu.back();
 }
 

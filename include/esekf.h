@@ -25,15 +25,15 @@ namespace ESEKF
   public:
     using HFunc = std::function<void(ESEKF::HData&, ESEKF::State&, PointCloud::Ptr&)>;
 
-    Esekf(double R, int maximum_iter, HFunc h_model);
+    Esekf(const double R, const int maximum_iter, const HFunc h_model);
 
     State getState() const;
 
-    MatSS get_P() const;
+    MatSS getP() const;
 
-    void change_x(State &input_state);
+    void setState(const State& state);
 
-    void change_P(MatSS &input_cov);
+    void setP(const MatSS &input_cov);
 
     // Forward Propagation  III-C
     void predict(double &dt, MatNN &Q, const InputU &i_in);
@@ -42,17 +42,17 @@ namespace ESEKF
     void iteratedUpdate(PointCloud::Ptr &cloud_ds);
 
   private:
-    VecS f_func(State state, InputU in, double dt);
+    VecS f_func(const State& state, const InputU& u, double dt) const;
 
-    MatSS df_dx_func(State s, InputU in, double dt);
+    MatSS df_dx_func(const State& state, const InputU& u, double dt) const;
 
-    MatSN df_dw_func(State s, InputU in, double dt);
+    MatSN df_dw_func(const State& state, const InputU& u, double dt) const;
 
     State x_;
-    MatSS P_ = MatSS::Identity();
-    double R_inv_;
-    int maximum_iter_;
-    HFunc h_model_;
+    MatSS P_;
+    const double R_inv_;
+    const int maximum_iter_;
+    const HFunc h_model_;
     const double epsi_ = 0.001;
   };
 }

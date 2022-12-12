@@ -9,16 +9,16 @@ namespace ESEKF
 
   struct HData
   {
-    bool valid;                                                // 有效特征点数量是否满足要求
-    bool converge;                                             // 迭代时，是否已经收敛
-    Eigen::Matrix<double, Eigen::Dynamic, 1> h;                // 残差	(公式(14)中的z)
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h_x; // 雅可比矩阵H (公式(14)中的H)
+    bool valid;
+    bool converge;
+    Eigen::Matrix<double, Eigen::Dynamic, 1> z;                // residual
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h;   // jacobian H
   };
 
   // the location of state
   constexpr int SZ = 24; // state size
   constexpr int NZ = 12; // noise size
-  // the location of state
+  // the location of parameters in state vector
   constexpr int L_P = 0;
   constexpr int L_R = 3;
   constexpr int L_Rli = 6;
@@ -27,14 +27,14 @@ namespace ESEKF
   constexpr int L_Bw = 15;
   constexpr int L_Ba = 18;
   constexpr int L_G = 21;
-  // the location of noise
+  // the location of parameters in noise vector
   constexpr int L_Nw = 0;
   constexpr int L_Na = 3;
   constexpr int L_Nbw = 6;
   constexpr int L_Nba = 9;
 
   using MatSS = Eigen::Matrix<double, SZ, SZ>; // 24X24 Cov Mat
-  using MatSN = Eigen::Matrix<double, SZ, NZ>; // 24X12 Cov Mat 
+  using MatSN = Eigen::Matrix<double, SZ, NZ>; // 24X12 Cov Mat
   using MatNN = Eigen::Matrix<double, NZ, NZ>; // 12X12 Cov Mat
   using VecS = Eigen::Matrix<double, SZ, 1>;   // 24X1 Vec
 
@@ -85,6 +85,6 @@ namespace ESEKF
       r.segment<3>(L_G) = this->grav - x2.grav;
       return r;
     }
-
+  };
 
 }

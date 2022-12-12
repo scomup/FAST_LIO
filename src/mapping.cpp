@@ -140,8 +140,8 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
     return;
   }
 
-  h_data.h_x = Eigen::MatrixXd::Zero(good_index.size(), ESEKF::SZ);
-  h_data.h.resize(good_index.size());
+  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), ESEKF::SZ);
+  h_data.z.resize(good_index.size());
 
   for (int idx = 0; idx < good_index.size(); idx++)
   {
@@ -162,19 +162,19 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
     if (extrinsic_est_)
     {
       Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_R) = A;
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_Rli) = B;
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_Tli) = C;
+      h_data.h.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
+      h_data.h.block<1, 3>(idx, ESEKF::L_Rli) = B;
+      h_data.h.block<1, 3>(idx, ESEKF::L_Tli) = C;
     }
     else
     {
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
-      h_data.h_x.block<1, 3>(idx, ESEKF::L_R) = A;
+      h_data.h.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
     }
 
     // 残差：点面距离
-    h_data.h(idx) = -norm_p.intensity;
+    h_data.z(idx) = norm_p.intensity;
   }
 }
 
@@ -265,7 +265,7 @@ void Mapping::pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double 
   odom.header.stamp = ros::Time().fromSec(time);
   setOdomMsg(odom.pose);
   pub.publish(odom);
-  auto P = kf.get_P();
+  auto P = kf.getP();
   for (int i = 0; i < 6; i++)
   {
     int k = i < 3 ? i + 3 : i - 3;
