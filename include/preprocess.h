@@ -4,9 +4,8 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 
+#include "common_lib.h"
 
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloud;
 
 enum TIME_UNIT
 {

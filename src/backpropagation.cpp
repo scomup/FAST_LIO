@@ -4,7 +4,7 @@
 
 #define MAX_INI_COUNT (10)
 
-const bool time_list(PointType &x, PointType &y) { return (x.curvature < y.curvature); };
+const bool time_list(PointType &x, PointType &y) { return (x.time < y.time); };
 
 BacKPropagationIMU::BacKPropagationIMU()
     : b_first_frame_(true), imu_need_init_(true), start_timestamp_(-1)
@@ -152,15 +152,12 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
   /*** Initialize IMU pose ***/
   ESEKF::State imu_state = kf_state.getState();
   imu_pose_.clear();
-  imu_pose_.push_back(set_pose6d(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
+  imu_pose_.push_back(ESEKF::StateBP(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
 
-  /*** forward propagation at each imu point ***/
-  Vec3 angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
-  Mat3 R_imu;
 
   double dt = 0;
 
-  ESEKF::InputU in;
+  ESEKF::InputU u;
   for (auto it_imu = v_imu.begin(); it_imu < (v_imu.end() - 1); it_imu++)
   {
     auto &&head = *(it_imu);
@@ -169,32 +166,31 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
     if (tail->header.stamp.toSec() < last_lidar_end_time_)
       continue;
 
-    angvel_avr << 0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
+    Vec3 angvel_avr(0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
         0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
-        0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
-    acc_avr << 0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
+        0.5 * (head->angular_velocity.z + tail->angular_velocity.z));
+    Vec3 acc_avr(0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
         0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
-        0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
+        0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z));
 
     acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
     if (head->header.stamp.toSec() < last_lidar_end_time_)
     {
       dt = tail->header.stamp.toSec() - last_lidar_end_time_;
-      // dt = tail->header.stamp.toSec() - pcl_beg_time;
     }
     else
     {
       dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
     }
 
-    in.acc = acc_avr;
-    in.gyro = angvel_avr;
+    u.acc = acc_avr;
+    u.gyro = angvel_avr;
     Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
     Q.block<3, 3>(3, 3).diagonal() = cov_acc;
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
-    kf_state.predict(dt, Q, in);
+    kf_state.predict(dt, Q, u);
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.getState();
@@ -205,13 +201,13 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
       acc_s_last[i] += imu_state.grav[i];
     }
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
-    imu_pose_.push_back(set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
+    imu_pose_.push_back(ESEKF::StateBP(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
   }
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
-  kf_state.predict(dt, Q, in);
+  kf_state.predict(dt, Q, u);
 
   imu_state = kf_state.getState();
   last_imu_ = sensor_data.imu.back();
@@ -225,16 +221,15 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
   {
     auto head = it_kp - 1;
     auto tail = it_kp;
-    R_imu << MAT_FROM_ARRAY(head->rot);
-    // std::cout<<"head imu acc: "<<acc_imu.transpose()<<std::endl;
-    vel_imu << VEC_FROM_ARRAY(head->vel);
-    pos_imu << VEC_FROM_ARRAY(head->pos);
-    acc_imu << VEC_FROM_ARRAY(tail->acc);
-    angvel_avr << VEC_FROM_ARRAY(tail->gyr);
+    Mat3& R_imu = head->rot;
+    Vec3& vel_imu = head->vel;
+    Vec3& pos_imu = head->pos;
+    Vec3& acc_imu = head->acc;
+    Vec3& angvel_avr = tail->gyr;
 
-    for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--)
+    for (; it_pcl->time / double(1000) > head->offset_time; it_pcl--)
     {
-      dt = it_pcl->curvature / double(1000) - head->offset_time;
+      dt = it_pcl->time / double(1000) - head->offset_time;
 
       /* Transform to the 'end' frame, using only the rotation
        * Note: Compensation direction is INVERSE of Frame's moving direction

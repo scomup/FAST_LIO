@@ -1,22 +1,6 @@
 #include "common_lib.h"
 #include "so3_math.h"
 
-Pose6D set_pose6d(const double t, const Eigen::Matrix<double, 3, 1> &a, const Eigen::Matrix<double, 3, 1> &g,
-                const Eigen::Matrix<double, 3, 1> &v, const Eigen::Matrix<double, 3, 1> &p, const Eigen::Matrix<double, 3, 3> &R)
-{
-  Pose6D rot_kp;
-  rot_kp.offset_time = t;
-  for (int i = 0; i < 3; i++)
-  {
-    rot_kp.acc[i] = a(i);
-    rot_kp.gyr[i] = g(i);
-    rot_kp.vel[i] = v(i);
-    rot_kp.pos[i] = p(i);
-    for (int j = 0; j < 3; j++)
-      rot_kp.rot[i * 3 + j] = R(i, j);
-  }
-  return move(rot_kp);
-}
 
 float calc_dist(PointType p1, PointType p2)
 {

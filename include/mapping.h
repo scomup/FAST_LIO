@@ -86,4 +86,7 @@ private:
 
   ESEKF::State state_;
 
+  std::vector<Vec3> norms_;
+  std::vector<double> residuals_;
+
 };

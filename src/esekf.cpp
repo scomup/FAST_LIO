@@ -81,8 +81,6 @@ namespace ESEKF
     P_ = f_x * P_ * f_x.transpose() + f_w * Q * f_w.transpose(); // paper (8) MatSS of Forward Propagation
   }
 
-  // 计算每个特征点的残差及H矩阵
-
   // ESKF
   void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
   {
@@ -90,15 +88,13 @@ namespace ESEKF
     h_data.valid = true;
     h_data.converge = true;
     int t = 0;
-    State x_propagated = x_; // 这里的x_和P_分别是经过正向传播后的状态量和协方差矩阵，因为会先调用predict函数再调用这个函数
+    State x_propagated = x_; //forward propagated state, paper (18) x^
     MatSS P_propagated = P_;
 
-    VecS dx_new = VecS::Zero(); // 24X1的向量
-
-    for (int i = -1; i < maximum_iter_; i++) // maximum_iter是卡尔曼滤波的最大迭代次数
+    for (int i = -1; i < maximum_iter_; i++) 
     {
       h_data.valid = true;
-      // 计算雅克比，也就是点面残差的导数 H(代码里是h_x)
+      
       h_model_(h_data, x_, cloud_ds);
 
       if (!h_data.valid)
@@ -106,19 +102,19 @@ namespace ESEKF
         continue;
       }
 
-      dx_new = x_.minus(x_propagated); // 公式(18)中的 x^k - x^
+      VecS xk_minus_x = x_.minus(x_propagated); // paper (18) x^k - x^
 
       auto H = h_data.h;
       Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
       K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
-      VecS dx = - K * h_data.z - (MatSS::Identity() - K * H ) * dx_new; // paper (18) J_inv = I
+      VecS dx = - K * h_data.z - (MatSS::Identity() - K * H ) * xk_minus_x; // paper (18) notice: J_inv = I
 
-      x_ = x_.plus(dx); // 公式(18)
+      x_ = x_.plus(dx); // update current state. paper (18)
 
       h_data.converge = true;
       for (int i = 0; i < SZ; i++)
       {
-        if (std::fabs(dx[i]) > epsi_) // 如果dx>epsi_ 认为没有收敛
+        if (std::fabs(dx[i]) > epsi_)
         {
           h_data.converge = false;
           break;

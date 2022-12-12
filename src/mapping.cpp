@@ -83,7 +83,8 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud)
 void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr &cloud)
 {
   int cloud_size = cloud->points.size();
-  PointCloud::Ptr norm_vec(new PointCloud(cloud_size, 1));
+  norms_.resize(cloud_size);
+  residuals_.resize(cloud_size);
   neighbor_array_.resize(cloud_size);
 
   std::vector<int> good_index;
@@ -114,7 +115,7 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
         continue;
     }
 
-    Eigen::Matrix<double, 4, 1> plane;
+    Vec4 plane;
 
     if (esti_plane(plane, points_near, 0.1))
     {
@@ -126,10 +127,8 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
 
       good_index.push_back(i);
 
-      norm_vec->points[i].x = plane(0); // 存储平面的单位法向量  以及当前点到平面距离
-      norm_vec->points[i].y = plane(1);
-      norm_vec->points[i].z = plane(2);
-      norm_vec->points[i].intensity = r;
+      norms_[i] = plane.head<3>();
+      residuals_[i] = r;
     }
   }
 
@@ -147,34 +146,32 @@ void Mapping::hModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr 
   {
     int i = good_index[idx];
 
-    Vec3 point = cloud->points[i].getVector3fMap().template cast<double>();
+    Vec3 point = cloud->points[i].getVector3fMap().template cast<double>(); // point in lidar frame
 
     Mat3 point_skew  = skewSymMat(point);
 
-    Vec3 point_i = state.Ril * point + state.til;
+    Vec3 point_i = state.Ril * point + state.til;  // point in imu frame
     Mat3 point_i_skew = skewSymMat(point_i);
 
-    const PointType &norm_p = norm_vec->points[i];
-    Vec3 norm_vec(norm_p.x, norm_p.y, norm_p.z);
+    Vec3& n = norms_[i];
 
-    Vec3 C(state.rot.transpose() * norm_vec);
+    Vec3 C(state.rot.transpose() * n);
     Vec3 A(point_i_skew * C);
     if (extrinsic_est_)
     {
       Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h.block<1, 3>(idx, ESEKF::L_P) = n;
       h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
       h_data.h.block<1, 3>(idx, ESEKF::L_Rli) = B;
       h_data.h.block<1, 3>(idx, ESEKF::L_Tli) = C;
     }
     else
     {
-      h_data.h.block<1, 3>(idx, ESEKF::L_P) = norm_vec;
+      h_data.h.block<1, 3>(idx, ESEKF::L_P) = n;
       h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
     }
 
-    // 残差：点面距离
-    h_data.z(idx) = norm_p.intensity;
+    h_data.z(idx) = residuals_[i];
   }
 }
 

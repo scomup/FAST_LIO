@@ -1,4 +1,5 @@
 #include "ikd_Tree.h"
+#include "point_types.h"
 
 /*
 Description: ikd-Tree: an incremental k-d tree for robotic applications
@@ -1722,3 +1723,4 @@ bool KD_TREE<PointType>::point_cmp_z(PointType a, PointType b) { return a.z < b.
 template class KD_TREE<pcl::PointXYZ>;
 template class KD_TREE<pcl::PointXYZI>;
 template class KD_TREE<pcl::PointXYZINormal>;
+template class KD_TREE<PointXYZIT>;

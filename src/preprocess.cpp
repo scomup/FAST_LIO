@@ -50,15 +50,11 @@ void Preprocess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
 
       PointType added_pt;
-
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.curvature = pl_orig.points[i].time * time_unit_scale_; // curvature unit: ms // std::cout<<added_pt.curvature<<std::endl;
+      added_pt.time = pl_orig.points[i].time * time_unit_scale_; // time unit: ms // std::cout<<added_pt.time<<std::endl;
 
       if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind_ * blind_))
       {

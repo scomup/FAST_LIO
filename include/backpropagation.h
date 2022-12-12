@@ -68,7 +68,7 @@ class BacKPropagationIMU
   PointCloud::Ptr cur_pcl_un_;
   sensor_msgs::ImuConstPtr last_imu_;
   std::deque<sensor_msgs::ImuConstPtr> v_imu_;
-  std::vector<Pose6D> imu_pose_;
+  std::vector<ESEKF::StateBP> imu_pose_;
   std::vector<Mat3>    v_rot_pcl_;
   Mat3 Lidar_R_wrt_IMU;
   Vec3 Lidar_T_wrt_IMU;

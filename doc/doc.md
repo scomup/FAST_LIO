@@ -25,8 +25,13 @@ s = \hat{s} \boxplus \~{s} \\
 \~{s} = s \boxminus \hat{s}
 $$
 
-### Prediction step
 
+### Error State Extended Kalman Filter
+
+We want to estimate the error state, and use it to update the current state.
+
+We want estimate the error State $\hat{s}$, which  
+### Prediction step
 $$
 s_t = f(s_{t-1}, u) \\
 P_t = F_sP_{t-1}F_s^T + F_wP_{t-1}F_w^T

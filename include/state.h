@@ -87,4 +87,28 @@ namespace ESEKF
     }
   };
 
+  struct StateBP
+  {
+    double offset_time;
+    Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
+    Mat3 rot = Mat3::Identity(); // imu rotation in world frame
+    Vec3 vel = Vec3(0, 0, 0);
+    Vec3 acc = Vec3(0, 0, 0);
+    Vec3 gyr = Vec3(0, 0, 0);
+
+    StateBP(const double t,
+            const Vec3 &a,
+            const Vec3 &g,
+            const Vec3 &v,
+            const Vec3 &p,
+            const Mat3 &R)
+    {
+      offset_time = t;
+      acc = a;
+      gyr = g;
+      vel = v;
+      pos = p;
+      rot = R;
+    }
+  };
 }

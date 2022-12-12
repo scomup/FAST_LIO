@@ -1,6 +1,9 @@
+#define PCL_NO_PRECOMPILE
+
 #include "mapping.h"
 #include "backpropagation.h"
 #include "preprocess.h"
+
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
@@ -81,15 +84,15 @@ bool syncData(SensorData &sensor_data)
       lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
       ROS_WARN("Too few input point cloud!\n");
     }
-    else if (sensor_data.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
+    else if (sensor_data.lidar->points.back().time / double(1000) < 0.5 * lidar_mean_scantime)
     {
       lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
     }
     else
     {
       scan_num++;
-      lidar_end_time_ = sensor_data.lidar_beg_time + sensor_data.lidar->points.back().curvature / double(1000);
-      lidar_mean_scantime += (sensor_data.lidar->points.back().curvature / double(1000) - lidar_mean_scantime) / scan_num;
+      lidar_end_time_ = sensor_data.lidar_beg_time + sensor_data.lidar->points.back().time / double(1000);
+      lidar_mean_scantime += (sensor_data.lidar->points.back().time / double(1000) - lidar_mean_scantime) / scan_num;
     }
 
     sensor_data.lidar_end_time = lidar_end_time_;
