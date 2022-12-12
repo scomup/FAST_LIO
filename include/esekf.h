@@ -4,7 +4,6 @@
 
 #include <vector>
 #include <cstdlib>
-#include <boost/bind.hpp>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <Eigen/Dense>
@@ -26,14 +25,14 @@ namespace ESEKF
   Eigen::Matrix<double, SZ, NZ> df_dw_func(State s, InputU in, double dt);
 
   // Error State Extended Kalman Filter
-  class esekf
+  class Esekf
   {
   public:
     typedef Eigen::Matrix<double, SZ, SZ> Cov;     // 24X24的协方差矩阵
     typedef Eigen::Matrix<double, SZ, 1> StateVec; // 24X1的向量
     using HFunc = std::function<void(ESEKF::HData&, ESEKF::State&, PointCloud::Ptr&)>;
 
-    esekf(double R, int maximum_iter, HFunc h_model);
+    Esekf(double R, int maximum_iter, HFunc h_model);
 
     State getState() const;
 

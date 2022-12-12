@@ -1,5 +1,5 @@
 #include "mapping.h"
-#include "backpropagation.hpp"
+#include "backpropagation.h"
 #include "preprocess.h"
 
 #define INIT_TIME (0.1)
@@ -164,7 +164,7 @@ int main(int argc, char **argv)
                            ESEKF::State &x,
                            PointCloud::Ptr &cloud){mapping->hModel(ekfom_data, x, cloud); };
 
-  ESEKF::esekf kf(LASER_POINT_COV, max_iteration, h_model);
+  ESEKF::Esekf kf(LASER_POINT_COV, max_iteration, h_model);
 
   std::shared_ptr<BacKPropagationIMU> p_imu(new BacKPropagationIMU());
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "so3_math.hpp"
-#include <common_lib.h>
+#include "so3_math.h"
+#include "common_lib.h"
 
 // 该hpp主要包含：广义加减法，前向传播主函数，计算特征点残差及其雅可比，ESKF主函数
 namespace ESEKF

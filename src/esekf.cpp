@@ -1,6 +1,5 @@
 #include "ikd_Tree.h"
-#include "so3_math.hpp"
-
+#include "so3_math.h"
 #include "esekf.h"
 #include "state.h"
 
@@ -58,30 +57,30 @@ namespace ESEKF
     return Cov;
   }
 
-  esekf::esekf(double R, int maximum_iter, HFunc h_model) : R_(R), maximum_iter_(maximum_iter), h_model_(h_model){};
+  Esekf::Esekf(double R, int maximum_iter, HFunc h_model) : R_(R), maximum_iter_(maximum_iter), h_model_(h_model){};
 
-  State esekf::getState() const
+  State Esekf::getState() const
   {
     return x_;
   }
 
-  esekf::Cov esekf::get_P() const
+  Esekf::Cov Esekf::get_P() const
   {
     return P_;
   }
 
-  void esekf::change_x(State &input_state)
+  void Esekf::change_x(State &input_state)
   {
     x_ = input_state;
   }
 
-  void esekf::change_P(Cov &input_cov)
+  void Esekf::change_P(Cov &input_cov)
   {
     P_ = input_cov;
   }
 
   // Forward Propagation  III-C
-  void esekf::predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in)
+  void Esekf::predict(double &dt, Eigen::Matrix<double, NZ, NZ> &Q, const InputU &i_in)
   {
     Eigen::Matrix<double, SZ, 1> f = f_func(x_, i_in, dt);        // paper (3) f
     Eigen::Matrix<double, SZ, SZ> f_x = df_dx_func(x_, i_in, dt); // paper (7) df/dx
@@ -93,7 +92,7 @@ namespace ESEKF
   // 计算每个特征点的残差及H矩阵
 
   // ESKF
-  void esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
+  void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
   {
     HData dyn_share;
     dyn_share.valid = true;

@@ -81,11 +81,13 @@ catkin_package(
 )
 
 add_executable(fastlio_mapping 
-src/main.cpp 
-src/mapping.cpp
- include/esekf.cpp 
- include/ikd_Tree.cpp 
- include/common_lib.cpp
- src/preprocess.cpp)
+  src/main.cpp 
+  src/mapping.cpp
+  src/esekf.cpp 
+  src/ikd_Tree.cpp 
+  src/common_lib.cpp
+  src/backpropagation.cpp
+  src/preprocess.cpp)
+  
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})

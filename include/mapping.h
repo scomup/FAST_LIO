@@ -73,7 +73,7 @@ public:
   template <typename T>
   void setOdomMsg(T &out);
 
-  void pubOdom(const ros::Publisher &pub, const ESEKF::esekf &kf, double time);
+  void pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time);
 
 private:
   double filter_size_map_ = 0;

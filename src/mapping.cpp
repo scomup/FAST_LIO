@@ -270,7 +270,7 @@ void Mapping::setOdomMsg(T &out)
   out.pose.orientation.w = q.w();
 }
 
-void Mapping::pubOdom(const ros::Publisher &pub, const ESEKF::esekf &kf, double time)
+void Mapping::pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time)
 {
   nav_msgs::Odometry odom;
 

@@ -1,5 +1,5 @@
 #include "common_lib.h"
-#include "so3_math.hpp"
+#include "so3_math.h"
 
 Pose6D set_pose6d(const double t, const Eigen::Matrix<double, 3, 1> &a, const Eigen::Matrix<double, 3, 1> &g,
                 const Eigen::Matrix<double, 3, 1> &v, const Eigen::Matrix<double, 3, 1> &p, const Eigen::Matrix<double, 3, 3> &R)
