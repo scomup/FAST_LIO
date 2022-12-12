@@ -20,7 +20,8 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/Vector3.h>
-#include "esekf.hpp"
+#include "state.h"
+#include "common_lib.h"
 
 /// *************Preconfiguration
 
@@ -90,9 +91,9 @@ BacKPropagationIMU::BacKPropagationIMU()
   cov_bias_acc  = Vec3(0.0001, 0.0001, 0.0001);
   mean_acc      = Vec3(0, 0, -1.0);
   mean_gyr      = Vec3(0, 0, 0);
-  angvel_last     = Zero3d;
-  Lidar_T_wrt_IMU = Zero3d;
-  Lidar_R_wrt_IMU = Eye3d;
+  angvel_last     = Vec3::Zero();
+  Lidar_T_wrt_IMU = Vec3::Zero();
+  Lidar_R_wrt_IMU = Mat3::Identity();
   last_imu_.reset(new sensor_msgs::Imu());
 }
 
@@ -103,7 +104,7 @@ void BacKPropagationIMU::reset()
   // ROS_WARN("reset BacKPropagationIMU");
   mean_acc      = Vec3(0, 0, -1.0);
   mean_gyr      = Vec3(0, 0, 0);
-  angvel_last       = Zero3d;
+  angvel_last       = Vec3::Zero();
   imu_need_init_    = true;
   start_timestamp_  = -1;
   init_iter_num     = 1;
@@ -190,7 +191,6 @@ void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::esekf &kf_st
   ESEKF::State init_state = kf_state.getState();
   init_state.grav = - mean_acc / mean_acc.norm() * G_m_s2;
   
-  //state_inout.rot = Eye3d; // SO3Expmap(mean_acc.cross(Vec3(0, 0, -1 / scale_gravity)));
   init_state.bg  = mean_gyr;
   init_state.til = Lidar_T_wrt_IMU;
   init_state.Ril = Eigen::Quaterniond(Lidar_R_wrt_IMU);

@@ -21,7 +21,6 @@
 #include <tf/transform_broadcaster.h>
 #include <geometry_msgs/Vector3.h>
 #include "preprocess.h"
-#include "esekf.hpp"
 
 #include "mapping.h"
 
@@ -121,10 +120,10 @@ void Mapping::hModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::
     if (!point_selected_surf[i])
       continue; // 如果该点不满足条件  不进行下面步骤
 
-    Eigen::Matrix<float, 4, 1> pabcd; // 平面点信息
+    Eigen::Matrix<double, 4, 1> pabcd; // 平面点信息
     point_selected_surf[i] = false;   // 将该点设置为无效点，用来判断是否满足条件
     // 拟合平面方程ax+by+cz+d=0并求解点到平面距离
-    if (esti_plane(pabcd, points_near, 0.1f))
+    if (esti_plane(pabcd, points_near, 0.1))
     {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3); // 当前点到平面的距离
       float s = 1 - 0.9 * fabs(pd2) / sqrt(p_l.norm());                                                      // 如果残差大于经验阈值，则认为该点是有效点  简言之，距离原点越近的lidar点  要求点到平面的距离越苛刻

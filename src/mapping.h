@@ -42,7 +42,8 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include "state.h"
-#include "esekf.hpp"
+#include "esekf.h"
+#include "ikd_Tree.h"
 
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)

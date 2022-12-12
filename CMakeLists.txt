@@ -80,6 +80,12 @@ catkin_package(
   INCLUDE_DIRS
 )
 
-add_executable(fastlio_mapping src/main.cpp src/mapping.cpp include/ikd_Tree.cpp src/preprocess.cpp)
+add_executable(fastlio_mapping 
+src/main.cpp 
+src/mapping.cpp
+ include/esekf.cpp 
+ include/ikd_Tree.cpp 
+ include/common_lib.cpp
+ src/preprocess.cpp)
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
