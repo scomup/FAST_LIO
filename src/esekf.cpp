@@ -102,12 +102,12 @@ namespace ESEKF
         continue;
       }
 
-      VecS xk_minus_x = x_.minus(x_propagated); // paper (18) x^k - x^
+      VecS delta_x = x_.minus(x_propagated); // paper (18) x^k - x^
 
       auto H = h_data.h;
       Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
       K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
-      VecS dx = - K * h_data.z - (MatSS::Identity() - K * H ) * xk_minus_x; // paper (18) notice: J_inv = I
+      VecS dx = - K * h_data.z - (MatSS::Identity() - K * H ) * delta_x; // paper (18) notice: J_inv = I
 
       x_ = x_.plus(dx); // update current state. paper (18)
 
