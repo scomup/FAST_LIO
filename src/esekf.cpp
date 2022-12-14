@@ -31,11 +31,11 @@ namespace ESEKF
   {
     MatSS df_dx = MatSS::Identity();
     df_dx.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity() * dt; // paper (7) Fx(2,3)
-    Eigen::Vector3d acc_corrected = (u.acc - s.ba) * dt;
-    df_dx.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat(acc_corrected) * dt; // paper(7) Fx(3,1)
+    df_dx.block<3, 3>(L_R, L_R) = SO3Expmap(-(u.gyro - s.bg) * dt); // paper (7) Fx(1,1)
+    df_dx.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity() * dt;      // paper(7) Fx(1,4)
+    df_dx.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat((u.acc - s.ba) ) * dt; // paper(7) Fx(3,1)
     df_dx.block<3, 3>(L_V, L_Ba) = -s.rot * dt;                            // paper(7) Fx(3,5)
     df_dx.block<3, 3>(L_V, L_G) = Eigen::Matrix3d::Identity() * dt;        // paper(7) Fx(3,6)
-    df_dx.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity() * dt;      // paper(7) Fx(1,4)
     return df_dx;
   }
 
@@ -44,8 +44,8 @@ namespace ESEKF
   MatSN Esekf::df_dw_func(const State& s, const InputU& u, double dt) const
   {
     MatSN df_dw = MatSN::Zero();
-    df_dw.block<3, 3>(L_V, L_Na) = -s.rot * dt;                        //  paper (7) Fw(3,2)
     df_dw.block<3, 3>(L_R, L_Nw) = -Eigen::Matrix3d::Identity() * dt;  //  paper (7) Fw(1,1)
+    df_dw.block<3, 3>(L_V, L_Na) = -s.rot * dt;                        //  paper (7) Fw(3,2)
     df_dw.block<3, 3>(L_Bw, L_Nbw) = Eigen::Matrix3d::Identity() * dt; //  paper (7) Fw(4,3)
     df_dw.block<3, 3>(L_Ba, L_Nba) = Eigen::Matrix3d::Identity() * dt; //  paper (7) Fw(5,4)
     return df_dw;

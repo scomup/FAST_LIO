@@ -26,10 +26,10 @@ $$
 \dot{x} = 
 \begin{bmatrix}
  v \\ 
- R(\omega - b_{\omega}-n_{\omega})\times \\
+\omega - b_{\omega}-n_{\omega} \\
  0 \\
  0 \\
- R(a-b_a-n_a)-g \\
+ R(a-b_a-n_a)+g \\
  n_{\omega} \\
  n_{a} \\
  0
@@ -44,10 +44,10 @@ $$
 f(x_{i-1}, u, w) = 
 \begin{bmatrix}
  v \\ 
- R(\omega - b_{\omega}-n_{\omega})\times \\
+\omega - b_{\omega}-n_{\omega}\\
  0 \\
  0 \\
- R(a-b_a-n_a)-g \\
+ R(a-b_a-n_a)+g \\
  n_{b\omega} \\
  n_{ba} \\
  0
@@ -78,10 +78,10 @@ $$
 f(x_{i-1}, u, 0) = 
 \begin{bmatrix}
  v \\ 
- R(\omega - b_{\omega})\times \\
+ \omega - b_{\omega} \\
  0 \\
  0 \\
- R(a-b_a)-g \\
+ R(a-b_a)+g \\
  0 \\
  0 \\
  0
@@ -105,35 +105,16 @@ $$
 
 $$ 
 \~{x} = x \boxminus \hat{x} \\
-= (x \boxplus ( f(x, u, w) \Delta{t})) 
+\~{x}= (x \boxplus ( f(x, u, w) \Delta{t})) 
 \boxminus 
 (\hat{x} \boxplus ( f(\hat{x}, u, 0) \Delta{t}))  \\
-= (\hat{x} \boxplus \~{x} \boxplus ( f(x, u, w) \Delta{t})) 
+\~{x}= (\hat{x} \boxplus \~{x} \boxplus ( f(x, u, w) \Delta{t})) 
 \boxminus 
 (\hat{x} \boxplus ( f(\hat{x}, u, 0) \Delta{t})) \\
 = F_{\~x}\~x + F_{w}w \tag{12}
 $$
 
-$$
-g(\~{x}, w) \stackrel{\mathrm{def}}{=}   f(x, u, w) \Delta{t}
-\tag{13}
-$$
-
-$$
-G(\~{x},g) \stackrel{\mathrm{def}}{=} \hat{x} \\= (\hat{x} \boxplus \~{x} \boxplus g(\~{x}, w)) 
-\boxminus 
-(\hat{x} \boxplus g(0, 0)) \\
-\tag{14}
-$$
-
-$$
-F_{\~x}=\frac{\partial G}{\partial \~x} + \frac{\partial G}{\partial g} \frac{\partial g}{\partial \~x} \tag{15}
-$$
-
-$$
-F_{w}=\frac{\partial G}{\partial g} \frac{\partial g}{\partial w} \tag{16}
-$$
-
+The matrix $F_{\~x}$ and $ F_{w}$ in (12) are computed following the Appendix.
 ### Iterated state update:
 
 ### Error State Extended Kalman Filter
