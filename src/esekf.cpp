@@ -31,7 +31,7 @@ namespace ESEKF
   {
     MatSS df_dx = MatSS::Identity();
     df_dx.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity() * dt; // paper (7) Fx(2,3)
-    df_dx.block<3, 3>(L_R, L_R) = SO3Expmap(-(u.gyro - s.bg) * dt); // paper (7) Fx(1,1)
+    //df_dx.block<3, 3>(L_R, L_R) = SO3Expmap(-(u.gyro - s.bg) * dt); // paper (7) Fx(1,1)
     df_dx.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity() * dt;      // paper(7) Fx(1,4)
     df_dx.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat((u.acc - s.ba) ) * dt; // paper(7) Fx(3,1)
     df_dx.block<3, 3>(L_V, L_Ba) = -s.rot * dt;                            // paper(7) Fx(3,5)

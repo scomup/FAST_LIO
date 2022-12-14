@@ -1,6 +1,6 @@
 
-## A:
-### Find $F_{\~x}$ and $F_w$
+## Appendix A:
+### Calculate $F_{\~x}$ and $F_w$
 $$
 g(\~{x}, w) \stackrel{\mathrm{def}}{=}   f(x, u, w) \Delta{t}
 \tag{1}
@@ -363,3 +363,92 @@ F_{w}= \frac{\partial G}{\partial g} \frac{\partial g}{\partial w} =
  \end{bmatrix} \Delta t
  \tag{30}
 $$
+
+## Appendix B:
+
+$$
+\argmin_{\substack{\~{x}}} ( \|z + H\~{x}\|_{R^{-1}}^2 + \|d + J\~{x}\|_{\hat{P}^{-1}}^2  )
+\tag{1}
+$$
+
+$$
+\argmin_{\substack{\~{x}}} ( \frac{1}{2} \mathcal{R}^T \Sigma \mathcal{R} )
+\tag{2}
+$$
+
+$$
+\mathcal{R}  = 
+\begin{bmatrix}
+ z + H\~{x}       \\  
+ d + J\~{x}       \\  
+\end{bmatrix}
+\tag{3}
+$$
+
+$$
+\Sigma  = 
+\begin{bmatrix}
+ R^{-1} &   \\  
+ & \hat{P}^{-1}  \\  
+\end{bmatrix} 
+\tag{4}
+$$
+
+$$
+\mathcal{J} =
+\begin{bmatrix}
+ H \\  
+ J \\  
+\end{bmatrix} 
+\tag{5}
+$$
+
+$$
+\mathcal{H} = \mathcal{J}^T \Sigma \mathcal{J} 
+\tag{6}
+$$
+
+$$
+\mathcal{g} = \mathcal{J}^T \Sigma \mathcal{R} 
+\tag{7}
+$$
+
+$$
+\mathcal{H} = H^T R^{-1} H + J^T \hat{P}^{-1} J
+= H^T R^{-1} H + P^{-1}
+\tag{8}
+$$
+
+$$
+\mathcal{H}^{-1} = (H^T R^{-1} H + P^{-1})^{-1} \\
+=P - PH^T(R+HPH^T)^{-1}HP \\
+=P - KHP \\
+=(I - KH)P \\
+=KRH^{-T}
+\tag{9}
+$$
+
+https://en.wikipedia.org/wiki/Woodbury_matrix_identity
+$$
+\Delta{\~{x}} = - \mathcal{H}^{-1} \mathcal{g} \\
+=-\mathcal{H}^{-1} \mathcal{J}^T \Sigma \mathcal{R} \\
+= -\mathcal{H}^{-1}(H^TR^{-1}(z+H\~{x})) -\mathcal{H}^{-1}(J^T\hat{P}^{-1}(d+J\~{x})) \\
+= -KRH^{-T}(H^TR^{-1}(z+H\~{x})) -(I - KH)(J^{-1} \hat{P} J^{-T})(J^T\hat{P}^{-1}(d+J\~{x})) \\
+= -K(z+H\~{x}) - (I - KH)(J^{-1} (d+J\~{x})) \\
+= -Kz-KH\~{x} - (I - KH)J^{-1} d - \~{x} + KH\~{x} \\
+= -Kz - (I - KH)J^{-1} d - \~{x} \\
+$$
+
+$$
+\~{x}^{ \kappa + 1} = \~{x}^{ \kappa } \boxplus \Delta{\~{x}} \\
+\~{x}^{ \kappa + 1} = -Kz - (I - KH)J^{-1} d
+$$
+
+$$
+\bar{P}=\mathcal{H}^{-1}=(I - KH)P
+$$
+https://onlinelibrary.wiley.com/doi/pdf/10.1002/9780470824566.app1
+
+
+
+
