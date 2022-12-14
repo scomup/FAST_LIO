@@ -9,9 +9,8 @@ x = [p_{wi}, R_{wi}, R_{il}, t_{il}, v_{wi}, b_{\omega}, b_a, g] \tag{1}
 $$
 
 * $p_{wi}$ The imu positon in world frame.
-* $R_{wi}$ The rotation form imu to world.
-* $R_{il}$ The rotation form lidar to imu.
-* $t_{il}$ The translation form lidar to imu.
+* $R_{wi}$ The rotation for $R_{il}$ The rotation from lidar to imu.
+* $t_{il}$ The translation from lidar to imu.
 * $b_{\omega}$ The gyroscope bias.
 * $b_a$ The accelerometer bias.
 * $g$ The gravity vector.
@@ -25,7 +24,7 @@ $$
 Because $x$ is a manifold, we can define $\boxplus$ and $\boxminus$ on $x$.
 
 $$
-if R \in  SO3  \\ 
+if  R \in  SO3  \\ 
 R_1 \boxplus R_2 = R_1 R_2 \\
 R_1 \boxminus R_2 = R_1^{-1} R_2
 \tag{3}
@@ -39,7 +38,7 @@ a \boxminus b = a - b
 $$
 
 ### State Estimate
-According to kinematics, we can calculate the differential of x
+According to kinematics, we can calculate the differential of $x$.
 
 $$ 
 \dot{x} = [\dot{p}, \dot{R}, \dot{R_{il}}, \dot{t_{il}}, \dot{v}, \dot{b_{\omega}}, \dot{b_a}, \dot{g}] 
@@ -63,7 +62,7 @@ $$
  \tag{6}
  $$
 
-$\omega$, $a$ are the gyroscope and accelerometer measurment (or IMU input).
+In (6), $\omega$, $a$ are the gyroscope and accelerometer measurment (or IMU input).
 
 
 $$
@@ -71,7 +70,7 @@ u = [\omega, a]
 \tag{7}
 $$
 
-$n_{\omega}$, $n_a$, $n_{b\omega}$, $n_{ba}$ represent the noise of gyroscope, the noise of accelerometer, the noise of gyroscope bias and the noise of accelerometer bias respectively.
+In (6), $n_{\omega}$, $n_a$, $n_{b\omega}$, $n_{ba}$ represent the noise of gyroscope, the noise of accelerometer, the noise of gyroscope bias and the noise of accelerometer bias respectively.
 
 $$
 w = [n_{\omega}, n_a, n_{b\omega}, n_{ba}]
@@ -79,14 +78,14 @@ w = [n_{\omega}, n_a, n_{b\omega}, n_{ba}]
 $$
 
 ### Discrete model:
-we can discretize the continuous model in (6) at the IMU sampling period $\Delta{t}$
+We can discretize the continuous model in (6) at the IMU sampling period $\Delta{t}$
 
 $$ 
 x_{i} = x_{i-1} \boxplus ( f(x_{i-1}, u, w) \Delta{t}) 
 \tag{9}
 $$
 
-where:
+Where:
 
 $$ 
 f(x_{i-1}, u, w) = 
@@ -105,7 +104,7 @@ $$
 
 
 ### State prediction (Forward Propagation):
-we can predict the status once a new IMU input $u$ is received.
+We can predict the status when a new IMU input $u$ is received.
 
 $$
 \hat{x}_{i} = \bar{x}_{i-1} \boxplus ( f(\bar{x}_{i-1}, u, 0) \Delta{t})
@@ -115,7 +114,7 @@ $$
 * $\bar{x}_{i-1}$: Optimal state in previous time.
 * $\hat{x}_{i}$: predicted state in current time.
 
-#### prediction function:
+#### Prediction function:
 Because we don't know in advance the exact amount of noise $w$, so the $w$ are set to zeros. 
 
 $$ 
@@ -136,14 +135,14 @@ $$
 
 * $x$: The ground truth of state.
 * $\bar{x}$: Optimal state.
-* $\hat{x}$: predicted value of the state.
+* $\hat{x}$: Predicted value of the state.
 * $\~{x}$: The state error.
 
 ####  Error state
 
-Although we do not know the specific noise, but we can evaluate the uncertainty of state error, using propagation of covariance.
+Although we do not know the specific noise, but we can evaluate the uncertainty of state error by propagation of covariance.
 
-The error between ground-true x and predicted x
+$\~{x}$ is the error between ground-true x and predicted x
 
 $$ 
 x = \hat{x} \boxplus \~{x} \\
@@ -151,7 +150,7 @@ x = \hat{x} \boxplus \~{x} \\
 \tag{13}
 $$
 
-plugging (9)and(11) into (13), we can get:
+Plugging (9) and (11) into (13), we can get:
 
 $$ 
 \~{x}= (x \boxplus ( f(x, u, w) \Delta{t})) 
@@ -170,7 +169,7 @@ $$
 \tag{15}
 $$
 
-Because $F_{\~x}$ and $ F_{w}$ are too complex, so we compute them in (15) in Appendix.
+Because the proof of $F_{\~x}$ and $ F_{w}$ are too complex, so we compute them in Appendix A.
 
 Denoting the covariance of white noises w as Q, then the propagated covariance P  can be computed iteratively.
 
@@ -212,13 +211,14 @@ $$
 d=\hat{x}^{\kappa}\boxminus\hat{x}
 $$
 
-Combining the prior with the posteriori yields the maximum a-posteriori estimate:
+Combining the prior with the likelihood yields the posteriori:
 
 $$
 \argmin_{\substack{\~{x}}} ( \|z + H\~{x}\|_{R^{-1}}^2 + \|d + J\~{x}\|_{\hat{P}^{-1}}^2  )
 \tag{19}
 $$
 
+We can solve (19) by gauss newton method.
 Iterative update x ($\kappa$: The number of iterations)
 
 $$
@@ -245,10 +245,10 @@ P=J^{-1} \hat{P}_{i} J^{-T}
 \tag{23}
 $$
 
-In AppendixB, we give the proof of (21) and (22)
+We show the proof of (21) and (22) In Appendix B.
 
 ### Error State Extended Kalman Filter
-Finlly, the ESEKF can be formalize as:
+Finally, the ESEKF can be formalized as following:
 
 ### Prediction step
 Predict x
@@ -258,7 +258,7 @@ $$
 \tag{24}
 $$
 
-update P 
+Predict P 
 
 $$
 \hat{P}_{i} = F_x \bar{P}_{i-1}F_x^T + F_w Q F_w^T
