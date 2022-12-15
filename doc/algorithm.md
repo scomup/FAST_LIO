@@ -9,7 +9,8 @@ x = [p_{wi}, R_{wi}, R_{il}, t_{il}, v_{wi}, b_{\omega}, b_a, g] \tag{1}
 $$
 
 * $p_{wi}$ The imu positon in world frame.
-* $R_{wi}$ The rotation for $R_{il}$ The rotation from lidar to imu.
+* $R_{wi}$ The imu rotation in world frame.
+* $R_{il}$ The rotation from lidar to imu.
 * $t_{il}$ The translation from lidar to imu.
 * $b_{\omega}$ The gyroscope bias.
 * $b_a$ The accelerometer bias.
@@ -24,9 +25,11 @@ $$
 Because $x$ is a manifold, we can define $\boxplus$ and $\boxminus$ on $x$.
 
 $$
-if  R \in  SO3  \\ 
+if  R \in  SO3 \\ r \in \mathfrak{so}3 \\ 
 R_1 \boxplus R_2 = R_1 R_2 \\
-R_1 \boxminus R_2 = R_1^{-1} R_2
+R_1 \boxminus R_2 = R_1^{-1} R_2 \\
+R_1 \boxplus r = R_1 \exp{r} \\
+R_1 \boxminus  r = \exp{r}^{-1} R_1  
 \tag{3}
 $$
 
@@ -62,7 +65,7 @@ $$
  \tag{6}
  $$
 
-In (6), $\omega$, $a$ are the gyroscope and accelerometer measurment (or IMU input).
+In (6), $\omega$, $a$ are the gyroscope and accelerometer measurment (i.e. the IMU input).
 
 
 $$
@@ -104,7 +107,7 @@ $$
 
 
 ### State prediction (Forward Propagation):
-We can predict the status when a new IMU input $u$ is received.
+We can predict the state when a new IMU input $u$ is received.
 
 $$
 \hat{x}_{i} = \bar{x}_{i-1} \boxplus ( f(\bar{x}_{i-1}, u, 0) \Delta{t})
@@ -112,7 +115,7 @@ $$
 $$
 
 * $\bar{x}_{i-1}$: Optimal state in previous time.
-* $\hat{x}_{i}$: predicted state in current time.
+* $\hat{x}_{i}$: Predicted state in current time.
 
 #### Prediction function:
 Because we don't know in advance the exact amount of noise $w$, so the $w$ are set to zeros. 
@@ -150,7 +153,7 @@ x = \hat{x} \boxplus \~{x} \\
 \tag{13}
 $$
 
-Plugging (9) and (11) into (13), we can get:
+Plugging (9) and (11) into (13), we get:
 
 $$ 
 \~{x}= (x \boxplus ( f(x, u, w) \Delta{t})) 
@@ -171,7 +174,7 @@ $$
 
 Because the proof of $F_{\~x}$ and $ F_{w}$ are too complex, so we compute them in Appendix A.
 
-Denoting the covariance of white noises w as Q, then the propagated covariance P  can be computed iteratively.
+Denoting the covariance of white noises w as Q, then the propagated covariance P can be computed iteratively.
 
 $$
 \hat{P_i}= F_{\~x}\hat{P_{i-1}}F_{\~x}^T +  F_{w}QF_{w}^T 
@@ -182,7 +185,7 @@ $\hat{P_{i-1}}$ is previous covariance.
 
 ### Iterated state update:
 
-We use MAP (Max A Posteriori estimation) to correct $\hat{x}$ when LiDAR measurment received.
+We use MAP (Max A Posteriori estimation) to correct $\hat{x}$ when LiDAR measurements are received.
 
 * Prediction error function  (prior):
 
