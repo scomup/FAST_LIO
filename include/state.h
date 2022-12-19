@@ -54,7 +54,7 @@ namespace ESEKF
     Vec3 vel = Vec3(0, 0, 0);
     Vec3 bg = Vec3(0, 0, 0);
     Vec3 ba = Vec3(0, 0, 0);
-    Vec3 grav = Vec3(0, 0, -G_m_s2);
+    Vec3 grav = Vec3(0, 0, -Gravity_);
 
     // plus for state
     State plus(VecS &f) const
@@ -87,7 +87,7 @@ namespace ESEKF
     }
   };
 
-  struct StateBP
+  struct BPInfo
   {
     double offset_time;
     Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
@@ -96,7 +96,7 @@ namespace ESEKF
     Vec3 acc = Vec3(0, 0, 0);
     Vec3 gyr = Vec3(0, 0, 0);
 
-    StateBP(const double t,
+    BPInfo(const double t,
             const Vec3 &a,
             const Vec3 &g,
             const Vec3 &v,

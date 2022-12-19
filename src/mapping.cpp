@@ -60,7 +60,7 @@ void Mapping::updateMapArea(Vec3 &pos_LiD)
 
 bool Mapping::initMap(const PointCloud::Ptr &cloud)
 {
-  /*** initialize the map kdtree ***/
+  // initialize the map kdtree 
   if (ikdtree_.Root_Node == nullptr)
   {
 

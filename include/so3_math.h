@@ -29,7 +29,7 @@ static Eigen::Matrix3d SO3Expmap(const Eigen::Vector3d &ang_vel, const double &d
 
     double r_ang = ang_vel_norm * dt;
 
-    /// Roderigous Tranformation
+    // Roderigous Tranformation
     return Eye3 + std::sin(r_ang) * K + (1.0 - std::cos(r_ang)) * K * K;
   }
   else

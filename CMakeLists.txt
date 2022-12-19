@@ -5,7 +5,7 @@ SET(CMAKE_BUILD_TYPE "Debug")
 
 ADD_COMPILE_OPTIONS(-std=c++14 )
 ADD_COMPILE_OPTIONS(-std=c++14 )
-set( CMAKE_CXX_FLAGS "-std=c++14 -O0" )
+set( CMAKE_CXX_FLAGS "-std=c++14 -O3" )
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
@@ -81,7 +81,7 @@ add_executable(fastlio_mapping
   src/esekf.cpp 
   src/ikd_Tree.cpp 
   src/common_lib.cpp
-  src/backpropagation.cpp
+  src/imu_propagation.cpp
   src/preprocess.cpp)
   
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})

@@ -27,19 +27,19 @@
 
 #include "common_lib.h"
 
-/// *************Preconfiguration
+// Preconfiguration
 
 #define MAX_INI_COUNT (10)
 
 
-/// *************IMU Process and undistortion
-class BacKPropagationIMU
+// IMU Process and undistortion
+class IMUPropagation
 {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  BacKPropagationIMU();
-  ~BacKPropagationIMU();
+  IMUPropagation();
+  ~IMUPropagation();
   
   void reset();
   void reset(double start_timestamp, const sensor_msgs::ImuConstPtr &lastimu);
@@ -54,31 +54,27 @@ class BacKPropagationIMU
 
   Vec3 cov_acc_;
   Vec3 cov_gyr_;
-  Vec3 cov_acc_scale_;
-  Vec3 cov_gyr_scale_;
   Vec3 cov_bias_gyr_;
   Vec3 cov_bias_acc_;
   double first_lidar_time_;
+  Vec3 mean_acc_;
+  Vec3 mean_gyr_;
 
  private:
-  void init(const SensorData &sensor_data, ESEKF::Esekf &kf_state, int &N);
+  bool init(const SensorData &sensor_data, ESEKF::Esekf &kf_state);
   void undistortCloud(const SensorData &sensor_data, ESEKF::Esekf &kf_state, PointCloud &pcl_in_out);
 
   Eigen::Matrix<double, ESEKF::NZ, ESEKF::NZ> Q_;
   PointCloud::Ptr cur_pcl_un_;
   sensor_msgs::ImuConstPtr last_imu_;
   std::deque<sensor_msgs::ImuConstPtr> v_imu_;
-  std::vector<ESEKF::StateBP> imu_pose_;
-  std::vector<Mat3>    v_rot_pcl_;
+  std::vector<ESEKF::BPInfo> imu_pose_;
   Mat3 Ril_;
   Vec3 til_;
-  Vec3 mean_acc_;
-  Vec3 mean_gyr_;
   Vec3 gyr_last_;
   Vec3 acc_last_;
   double start_timestamp_;
   double last_lidar_end_time_;
-  int    init_iter_num = 1;
-  bool   b_first_frame_ = true;
+  int    init_imu_num_ = 0;
   bool   imu_need_init_ = true;
 };

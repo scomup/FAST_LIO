@@ -6,7 +6,6 @@ Panels:
       Expanded:
         - /Global Options1
         - /Grid1
-        - /mapping1
         - /mapping1/currPoints1
         - /mapping1/currPoints1/Autocompute Value Bounds1
         - /Odometry1/Odometry1
@@ -14,6 +13,7 @@ Panels:
         - /Odometry1/Odometry1/Covariance1
         - /Odometry1/Odometry1/Covariance1/Position1
         - /Odometry1/Odometry1/Covariance1/Orientation1
+        - /PointCloud21
         - /MarkerArray1/Namespaces1
       Splitter Ratio: 0.6432291865348816
     Tree Height: 786
@@ -83,7 +83,7 @@ Visualization Manager:
           Color Transformer: Intensity
           Danger Color: 0; 0; 255
           Decay Time: 0
-          Enabled: true
+          Enabled: false
           Free Color: 255; 255; 255
           Invert Rainbow: false
           Max Color: 255; 255; 255
@@ -100,7 +100,7 @@ Visualization Manager:
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
-          Value: true
+          Value: false
         - Alpha: 0.30000001192092896
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
@@ -246,7 +246,7 @@ Visualization Manager:
       Color Transformer: Intensity
       Danger Color: 0; 0; 255
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Free Color: 255; 255; 255
       Invert Rainbow: false
       Max Color: 239; 41; 41
@@ -261,11 +261,11 @@ Visualization Manager:
       Size (Pixels): 4
       Size (m): 0.30000001192092896
       Style: Spheres
-      Topic: /cloud_effected
+      Topic: /cloud_cmp
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -333,25 +333,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 88.03214263916016
+      Distance: 43.83867263793945
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -51.11824035644531
-        Y: 14.669147491455078
-        Z: -6.558162689208984
+        X: -3.5440170764923096
+        Y: -1.9255648851394653
+        Z: -0.793448269367218
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0847967863082886
+      Pitch: 1.5697963237762451
       Target Frame: global
       Value: Orbit (rviz)
-      Yaw: 1.546359896659851
+      Yaw: 1.6313598155975342
     Saved: ~
 Window Geometry:
   Displays:
@@ -369,5 +369,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1853
-  X: 1987
+  X: 67
   Y: 27

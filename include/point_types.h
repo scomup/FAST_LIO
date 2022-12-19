@@ -8,7 +8,7 @@
 struct PointXYZIT
 {
   PCL_ADD_POINT4D; // quad-word XYZ
-  float intensity; ///< laser intensity reading
+  float intensity; //< laser intensity reading
   float time;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW // ensure proper alignment
 } EIGEN_ALIGN16;

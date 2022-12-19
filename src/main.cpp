@@ -1,7 +1,7 @@
 #define PCL_NO_PRECOMPILE
 
 #include "mapping.h"
-#include "backpropagation.h"
+#include "imu_propagation.h"
 #include "preprocess.h"
 
 
@@ -74,7 +74,7 @@ bool syncData(SensorData &sensor_data)
     return false;
   }
 
-  /*** push a lidar scan ***/
+  // push a lidar scan 
   if (!lidar_pushed_)
   {
     sensor_data.lidar = lidar_buffer_.front();
@@ -105,7 +105,7 @@ bool syncData(SensorData &sensor_data)
     return false;
   }
 
-  /*** push imu data, and pop from imu buffer ***/
+  // push imu data, and pop from imu buffer 
   double imu_time = imu_buffer_.front()->header.stamp.toSec();
   sensor_data.imu.clear();
   while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time_))
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
 
   ESEKF::Esekf kf(LASER_POINT_COV, max_iteration, h_model);
 
-  std::shared_ptr<BacKPropagationIMU> p_imu(new BacKPropagationIMU());
+  std::shared_ptr<IMUPropagation> p_imu(new IMUPropagation());
 
   pcl::VoxelGrid<PointType> downsampe_filter;
   downsampe_filter.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
@@ -188,6 +188,8 @@ int main(int argc, char **argv)
   ros::Subscriber sub_pcl = nh.subscribe("/velodyne_points", 200000, cloudCB);
   ros::Subscriber sub_imu = nh.subscribe("/imu/data", 200000, imuCB);
   ros::Publisher pub_cloud = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
+  ros::Publisher pub_cloud2 = nh.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
+
   ros::Publisher pub_odom = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
   //------------------------------------------------------------------------------------------------------
 
@@ -217,7 +219,19 @@ int main(int argc, char **argv)
 
 
       p_imu->process(sensor_data, kf, cloud_deskew); // deskew lidar points. by backward propagation
-
+      
+      /*PointCloud::Ptr cloud_deskew_cmp(new PointCloud());
+      for(auto p : sensor_data.lidar->points)
+      {
+        p.intensity = 0;
+        cloud_deskew_cmp->push_back(p);
+      }
+      for(auto p : cloud_deskew->points)
+      {
+        p.intensity = 1;
+        cloud_deskew_cmp->push_back(p);
+      }
+      */
 
       if (cloud_deskew->empty() || (cloud_deskew == NULL))
       {
@@ -260,7 +274,10 @@ int main(int argc, char **argv)
 
       //  Publish points 
       if (scan_pub_en)
+      {
         mapping->pubCloud(pub_cloud, cloud_deskew, lidar_end_time_);
+        //mapping->pubCloud(pub_cloud2, cloud_deskew_cmp, lidar_end_time_);
+      }
     }
 
     status = ros::ok();
