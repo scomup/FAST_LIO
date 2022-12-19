@@ -4,8 +4,6 @@
 
 #define MAX_INI_COUNT (10)
 
-const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
-
 IMUPropagation::IMUPropagation()
     :imu_need_init_(true), start_timestamp_(-1)
 {
@@ -107,14 +105,11 @@ void IMUPropagation::undistortCloud(const SensorData &sensor_data, ESEKF::Esekf 
   // add the imu of the last frame-tail to the of current frame-head 
   auto imus = sensor_data.imu;
   imus.push_front(last_imu_);
-  const double &imu_beg_time = imus.front()->header.stamp.toSec();
   const double &imu_end_time = imus.back()->header.stamp.toSec();
-  const double &pcl_beg_time = sensor_data.lidar_beg_time;
   const double &pcl_end_time = sensor_data.lidar_end_time;
 
   // sort point clouds by offset time 
   cloud = *(sensor_data.lidar);
-  sort(cloud.points.begin(), cloud.points.end(), time_cmp);
 
   // Initialize IMU pose 
   ESEKF::State imu_state = kf_state.getState();
@@ -160,8 +155,8 @@ void IMUPropagation::undistortCloud(const SensorData &sensor_data, ESEKF::Esekf 
 
     acc_last_ += imu_state.grav;
 
-    double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
-    imu_pose_.push_back(ESEKF::BPInfo(offs_t, acc_last_, gyr_last_, imu_state.vel, imu_state.pos, imu_state.rot));
+    double &&offset_time = tail->header.stamp.toSec() - pcl_end_time;
+    imu_pose_.push_back(ESEKF::BPInfo(offset_time, acc_last_, gyr_last_, imu_state.vel, imu_state.pos, imu_state.rot));
   }
 
   // calculated the pos and attitude prediction at the frame-end 
@@ -191,19 +186,17 @@ void IMUPropagation::undistortCloud(const SensorData &sensor_data, ESEKF::Esekf 
     {
       dt = point->time - head->offset_time;
 
-      /* Transform to the 'end' frame, using only the rotation
-       * Note: Compensation direction is INVERSE of Frame's moving direction
-       * So if we want to compensate a point at timestamp-i to the frame-e
-       * p_deskew = R_imu_e ^ T * (R_i * p_i + t_ei) where t_ei is represented in global frame */
-      Mat3 R_i(R_imu * SO3Expmap(gyr, dt));
+      // Transform to the 'end' frame, using only the rotation
+      Mat3 R_w_curi(R_imu * SO3Expmap(gyr, dt));//cur to world
+      Vec3 t_w_curi(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
 
-      Vec3 p_i(point->x, point->y, point->z);
-      Vec3 t_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
-      // imu_state.Ril * p_i + imu_state.til = pi
-      //  (R_i * pi + t_ei) = p_ie
-      // imu_state.rot = Rwi
+      Vec3 p_l(point->x, point->y, point->z);//lidar frame point
+      Vec3 p_i(imu_state.Ril * p_l + imu_state.til);//imu frame point
+      Vec3 p_w(R_w_curi * p_i + t_w_curi);//world frame point
+
+      Mat3& R_w_endi = imu_state.rot;
       
-      Vec3 p_deskew = imu_state.Ril.transpose() * (imu_state.rot.transpose() * (R_i * (imu_state.Ril * p_i + imu_state.til) + t_ei) - imu_state.til); // not accurate!
+      Vec3 p_deskew = imu_state.Ril.transpose() * (R_w_endi.transpose() * p_w - imu_state.til); // using only the rotation
 
       // save Undistorted points and their rotation
       point->x = p_deskew(0);

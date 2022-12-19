@@ -3,7 +3,9 @@
 #include "mapping.h"
 #include "imu_propagation.h"
 #include "preprocess.h"
+#include <algorithm>
 
+const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
@@ -12,16 +14,13 @@ bool flg_exit = false;
 
 std::mutex mtx_;
 
-double last_timestamp_lidar_ = 0, last_timestamp_imu_ = -1.0;
+double last_timestamp_lidar_ = 0, newest_imu_stamp_ = -1.0;
 double lidar_end_time_ = 0;
 
 std::deque<double> time_buffer_;
 std::deque<PointCloud::Ptr> lidar_buffer_;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
 
-double lidar_mean_scantime = 0.0;
-int scan_num = 0;
-bool lidar_pushed_;
 std::shared_ptr<Preprocess> p_pre_g;
 
 void SigHandle(int sig)
@@ -55,13 +54,13 @@ void imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
 
   mtx_.lock();
 
-  if (timestamp < last_timestamp_imu_)
+  if (timestamp < newest_imu_stamp_)
   {
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer_.clear();
   }
 
-  last_timestamp_imu_ = timestamp;
+  newest_imu_stamp_ = timestamp;
 
   imu_buffer_.push_back(msg);
   mtx_.unlock();
@@ -74,33 +73,16 @@ bool syncData(SensorData &sensor_data)
     return false;
   }
 
-  // push a lidar scan 
-  if (!lidar_pushed_)
-  {
-    sensor_data.lidar = lidar_buffer_.front();
-    sensor_data.lidar_beg_time = time_buffer_.front();
-    if (sensor_data.lidar->points.size() <= 1) // time too little
-    {
-      lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
-      ROS_WARN("Too few input point cloud!\n");
-    }
-    else if (sensor_data.lidar->points.back().time / double(1000) < 0.5 * lidar_mean_scantime)
-    {
-      lidar_end_time_ = sensor_data.lidar_beg_time + lidar_mean_scantime;
-    }
-    else
-    {
-      scan_num++;
-      lidar_end_time_ = sensor_data.lidar_beg_time + sensor_data.lidar->points.back().time / double(1000);
-      lidar_mean_scantime += (sensor_data.lidar->points.back().time / double(1000) - lidar_mean_scantime) / scan_num;
-    }
+  // add lidar
+  auto &cloud = lidar_buffer_.front();
+  std::sort(cloud->points.begin(), cloud->points.end(), time_cmp);
 
-    sensor_data.lidar_end_time = lidar_end_time_;
-
-    lidar_pushed_ = true;
-  }
-
-  if (last_timestamp_imu_ < lidar_end_time_)
+  sensor_data.lidar = cloud;
+  double stamp = time_buffer_.front();
+  sensor_data.lidar_end_time = stamp + cloud->points.back().time;
+  lidar_end_time_ = sensor_data.lidar_end_time;
+  
+  if (newest_imu_stamp_ < lidar_end_time_)
   {
     return false;
   }
@@ -119,7 +101,6 @@ bool syncData(SensorData &sensor_data)
 
   lidar_buffer_.pop_front();
   time_buffer_.pop_front();
-  lidar_pushed_ = false;
   return true;
 }
 
@@ -196,7 +177,6 @@ int main(int argc, char **argv)
   SensorData sensor_data;
   PointCloud::Ptr cloud_deskew(new PointCloud());
   PointCloud::Ptr cloud_ds(new PointCloud());
-  double first_lidar_time_ = 0.0;
   bool flg_first_scan = true;
 
   signal(SIGINT, SigHandle);
@@ -211,8 +191,7 @@ int main(int argc, char **argv)
     {
       if (flg_first_scan)
       {
-        first_lidar_time_ = sensor_data.lidar_beg_time;
-        p_imu->first_lidar_time_ = first_lidar_time_;
+        
         flg_first_scan = false;
         continue;
       }

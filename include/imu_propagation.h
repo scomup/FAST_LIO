@@ -56,7 +56,6 @@ class IMUPropagation
   Vec3 cov_gyr_;
   Vec3 cov_bias_gyr_;
   Vec3 cov_bias_acc_;
-  double first_lidar_time_;
   Vec3 mean_acc_;
   Vec3 mean_gyr_;
 

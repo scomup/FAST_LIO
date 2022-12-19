@@ -38,10 +38,8 @@ struct SensorData // Lidar data and imu dates for the curent process
 {
   SensorData()
   {
-    lidar_beg_time = 0.0;
     this->lidar.reset(new PointCloud());
   };
-  double lidar_beg_time;
   double lidar_end_time;
   PointCloud::Ptr lidar;
   std::deque<sensor_msgs::Imu::ConstPtr> imu;

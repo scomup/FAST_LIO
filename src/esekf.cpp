@@ -3,7 +3,7 @@
 #include "esekf.h"
 #include "state.h"
 
-// 该hpp主要包含：广义加减法，前向传播主函数，计算特征点残差及其雅可比，ESKF主函数
+
 namespace ESEKF
 {
 
@@ -124,14 +124,14 @@ namespace ESEKF
       if (h_data.converge)
         t++;
 
-      if (!t && i == maximum_iter_ - 2) // 如果迭代了3次还没收敛 强制令成true，h_model函数中会重新寻找近邻点
+      if (!t && i == maximum_iter_ - 2) 
       {
         h_data.converge = true;
       }
 
       if (t > 1 || i == maximum_iter_ - 1)
       {
-        P_ = (MatSS::Identity() - K * H) * P_; // 公式(19)
+        P_ = (MatSS::Identity() - K * H) * P_; // paper (19)
         return;
       }
     }
