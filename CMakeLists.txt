@@ -82,7 +82,9 @@ add_executable(fastlio_mapping
   src/ikd_Tree.cpp 
   src/common_lib.cpp
   src/imu_propagation.cpp
-  src/preprocess.cpp)
+  src/preprocess.cpp
+  src/lidar_odom_ros.cpp
+  )
   
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
