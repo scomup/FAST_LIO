@@ -10,14 +10,14 @@ BacKPropagationIMU::BacKPropagationIMU()
     : b_first_frame_(true), imu_need_init_(true), start_timestamp_(-1)
 {
   init_iter_num = 1;
-  Q = ESEKF::processNoiseCov();
+  Q_ = ESEKF::processNoiseCov();
   cov_acc_ = Vec3(0.1, 0.1, 0.1);
   cov_gyr_ = Vec3(0.1, 0.1, 0.1);
   cov_bias_gyr_ = Vec3(0.0001, 0.0001, 0.0001);
   cov_bias_acc_ = Vec3(0.0001, 0.0001, 0.0001);
   mean_acc_ = Vec3(0, 0, -1.0);
   mean_gyr_ = Vec3(0, 0, 0);
-  angvel_last_ = Vec3::Zero();
+  gyr_last_ = Vec3::Zero();
   til_ = Vec3::Zero();
   Ril_ = Mat3::Identity();
   last_imu_.reset(new sensor_msgs::Imu());
@@ -30,7 +30,7 @@ void BacKPropagationIMU::reset()
   // ROS_WARN("reset BacKPropagationIMU");
   mean_acc_ = Vec3(0, 0, -1.0);
   mean_gyr_ = Vec3(0, 0, 0);
-  angvel_last_ = Vec3::Zero();
+  gyr_last_ = Vec3::Zero();
   imu_need_init_ = true;
   start_timestamp_ = -1;
   init_iter_num = 1;
@@ -80,7 +80,7 @@ void BacKPropagationIMU::setAccBiasCov(const Vec3 &b_a)
 
 void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::Esekf &kf_state, int &N)
 {
-  /** 1. initializing the gravity, gyro bias, acc and gyro covariance
+  /** 1. initializing the gravity, gyr bias, acc and gyr covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
 
   Vec3 cur_acc, cur_gyr;
@@ -150,7 +150,7 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
   /*** Initialize IMU pose ***/
   ESEKF::State imu_state = kf_state.getState();
   imu_pose_.clear();
-  imu_pose_.push_back(ESEKF::StateBP(0.0, acc_s_last_, angvel_last_, imu_state.vel, imu_state.pos, imu_state.rot));
+  imu_pose_.push_back(ESEKF::StateBP(0.0, acc_last_, gyr_last_, imu_state.vel, imu_state.pos, imu_state.rot));
 
 
   double dt = 0;
@@ -164,7 +164,7 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
     if (tail->header.stamp.toSec() < last_lidar_end_time_)
       continue;
 
-    Vec3 angvel_avr(0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
+    Vec3 gyr_avr(0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
         0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
         0.5 * (head->angular_velocity.z + tail->angular_velocity.z));
     Vec3 acc_avr(0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
@@ -183,28 +183,28 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
     }
 
     u.acc = acc_avr;
-    u.gyro = angvel_avr;
-    Q.block<3, 3>(0, 0).diagonal() = cov_gyr_;
-    Q.block<3, 3>(3, 3).diagonal() = cov_acc_;
-    Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr_;
-    Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc_;
-    kf_state.predict(dt, Q, u);
+    u.gyr = gyr_avr;
+    Q_.block<3, 3>(0, 0).diagonal() = cov_gyr_;
+    Q_.block<3, 3>(3, 3).diagonal() = cov_acc_;
+    Q_.block<3, 3>(6, 6).diagonal() = cov_bias_gyr_;
+    Q_.block<3, 3>(9, 9).diagonal() = cov_bias_acc_;
+    kf_state.predict(dt, Q_, u);
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.getState();
-    angvel_last_ = angvel_avr - imu_state.bg;
-    acc_s_last_ = imu_state.rot * (acc_avr - imu_state.ba);
+    gyr_last_ = gyr_avr - imu_state.bg;
+    acc_last_ = imu_state.rot * (acc_avr - imu_state.ba);
 
-    acc_s_last_ += imu_state.grav;
+    acc_last_ += imu_state.grav;
 
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
-    imu_pose_.push_back(ESEKF::StateBP(offs_t, acc_s_last_, angvel_last_, imu_state.vel, imu_state.pos, imu_state.rot));
+    imu_pose_.push_back(ESEKF::StateBP(offs_t, acc_last_, gyr_last_, imu_state.vel, imu_state.pos, imu_state.rot));
   }
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
-  kf_state.predict(dt, Q, u);
+  kf_state.predict(dt, Q_, u);
 
   imu_state = kf_state.getState();
   last_imu_ = sensor_data.imu.back();
@@ -222,7 +222,7 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
     Vec3& vel_imu = head->vel;
     Vec3& pos_imu = head->pos;
     Vec3& acc_imu = head->acc;
-    Vec3& angvel_avr = tail->gyr;
+    Vec3& gyr_avr = tail->gyr;
 
     for (; it_pcl->time / double(1000) > head->offset_time; it_pcl--)
     {
@@ -232,7 +232,7 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
        * Note: Compensation direction is INVERSE of Frame's moving direction
        * So if we want to compensate a point at timestamp-i to the frame-e
        * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
-      Mat3 R_i(R_imu * SO3Expmap(angvel_avr, dt));
+      Mat3 R_i(R_imu * SO3Expmap(gyr_avr, dt));
 
       Vec3 P_i(it_pcl->x, it_pcl->y, it_pcl->z);
       Vec3 T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);

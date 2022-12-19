@@ -21,7 +21,7 @@ namespace ESEKF
   {
     VecS f = VecS::Zero();
     f.segment<3>(L_P) = state.vel;                                    // (7) row 2: velocity
-    f.segment<3>(L_R) = u.gyro - state.bg;                           // (7) row 1: omega
+    f.segment<3>(L_R) = u.gyr - state.bg;                           // (7) row 1: omega
     f.segment<3>(L_V) = state.rot * (u.acc - state.ba) + state.grav; // (7) row 3: acceleration
     return f * dt;
   }
@@ -31,7 +31,7 @@ namespace ESEKF
   {
     MatSS df_dx = MatSS::Identity();
     df_dx.block<3, 3>(L_P, L_V) = Eigen::Matrix3d::Identity() * dt; // paper (7) Fx(2,3)
-    //df_dx.block<3, 3>(L_R, L_R) = SO3Expmap(-(u.gyro - s.bg) * dt); // paper (7) Fx(1,1)
+    //df_dx.block<3, 3>(L_R, L_R) = SO3Expmap(-(u.gyr - s.bg) * dt); // paper (7) Fx(1,1)
     df_dx.block<3, 3>(L_R, L_Bw) = -Eigen::Matrix3d::Identity() * dt;      // paper(7) Fx(1,4)
     df_dx.block<3, 3>(L_V, L_R) = -s.rot * skewSymMat((u.acc - s.ba) ) * dt; // paper(7) Fx(3,1)
     df_dx.block<3, 3>(L_V, L_Ba) = -s.rot * dt;                            // paper(7) Fx(3,5)

@@ -42,7 +42,7 @@ namespace ESEKF
   struct InputU
   {
     Vec3 acc = Vec3(0, 0, 0);
-    Vec3 gyro = Vec3(0, 0, 0);
+    Vec3 gyr = Vec3(0, 0, 0);
   };
 
   struct State
