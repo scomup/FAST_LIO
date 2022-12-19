@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mapping.h"
-#include "imu_propagation.h"
 #include "preprocess.h"
 #include <algorithm>
 #include "state.h"
@@ -21,7 +20,7 @@ public:
   void runCB(const ros::TimerEvent& e);
 
 private:
-  void pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time);
+  void pubOdom(const ros::Publisher &pub, const Esekf &kf, double time);
 
   void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
 
@@ -39,15 +38,14 @@ private:
   std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
   bool scan_pub_ = false;
   boost::shared_ptr<Preprocess> p_pre_;
-  boost::shared_ptr<IMUPropagation> p_imu_;
-  boost::shared_ptr<ESEKF::Esekf> kf_;
+  boost::shared_ptr<Esekf> kf_;
   boost::shared_ptr<Mapping> mapping_;
   ros::Subscriber sub_pcl_;
   ros::Subscriber sub_imu_;
   ros::Publisher pub_cloud_;
   pcl::VoxelGrid<PointType> downsampe_filter_;
   ros::Timer run_timer_;
-  ESEKF::State state_;
+  State state_;
   //ros::Publisher pub_cloud2 = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
 
   ros::Publisher pub_odom_;

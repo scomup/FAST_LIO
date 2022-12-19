@@ -1,58 +1,94 @@
 #ifndef ESEKFOM_EKF_HPP1
 #define ESEKFOM_EKF_HPP1
 
-
 #include <vector>
 #include <cstdlib>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <mutex>
 
 #include "state.h"
 
+MatNN processNoiseCov();
 
-namespace ESEKF
+// Error State Extended Kalman Filter
+class Esekf
 {
+public:
+  using HFunc = std::function<void(HData &, State &, PointCloud::Ptr &)>;
 
-  MatNN processNoiseCov();
+  Esekf(const double R, const int maximum_iter, const HFunc h_model);
+
+  State getState() const;
+
+  MatSS getP() const;
+
+  void setState(const State &state);
+
+  void setP(const MatSS &input_cov);
+
+  // Forward Propagation  III-C
+  void predict(double &dt, MatNN &Q, const InputU &i_in);
+
+  // update
+  void iteratedUpdate(PointCloud::Ptr &cloud_ds);
+
+  void setExtrinsic(const Vec3 &transl, const Mat3 &rot);
+
+  void setGyrCov(const Vec3 &cov);
+
+  void setAccCov(const Vec3 &cov);
+
+  void setGyrBiasCov(const Vec3 &b_g);
+
+  void setAccBiasCov(const Vec3 &b_a);
+
+  void undistortCloud(const SensorData &sensor_data, PointCloud::Ptr &pcl_un);
 
 
-  // Error State Extended Kalman Filter
-  class Esekf
-  {
-  public:
-    using HFunc = std::function<void(ESEKF::HData&, ESEKF::State&, PointCloud::Ptr&)>;
+private:
+  VecS f_func(const State &state, const InputU &u, double dt) const;
 
-    Esekf(const double R, const int maximum_iter, const HFunc h_model);
+  MatSS df_dx_func(const State &state, const InputU &u, double dt) const;
 
-    State getState() const;
+  MatSN df_dw_func(const State &state, const InputU &u, double dt) const;
 
-    MatSS getP() const;
+  bool initImu(const SensorData &sensor_data);
 
-    void setState(const State& state);
+  void propagation(const SensorData &sensor_data, PointCloud &pcl_in_out);
 
-    void setP(const MatSS &input_cov);
+  Vec3 cov_acc_;
+  Vec3 cov_gyr_;
+  Vec3 cov_bias_gyr_;
+  Vec3 cov_bias_acc_;
+  Vec3 mean_acc_;
+  Vec3 mean_gyr_;
 
-    // Forward Propagation  III-C
-    void predict(double &dt, MatNN &Q, const InputU &i_in);
+  Eigen::Matrix<double, NZ, NZ> Q_;
 
-    // update
-    void iteratedUpdate(PointCloud::Ptr &cloud_ds);
+  PointCloud::Ptr cur_pcl_un_;
 
-  private:
-    VecS f_func(const State& state, const InputU& u, double dt) const;
+  sensor_msgs::ImuConstPtr last_imu_;
 
-    MatSS df_dx_func(const State& state, const InputU& u, double dt) const;
+  std::vector<BPInfo> imu_pose_;
 
-    MatSN df_dw_func(const State& state, const InputU& u, double dt) const;
+  Mat3 Ril_;
+  Vec3 til_;
+  Vec3 gyr_last_;
+  Vec3 acc_last_;
+  double start_timestamp_;
+  double last_lidar_end_time_;
+  int    init_imu_num_ = 0;
+  bool   imu_need_init_ = true;
 
-    State x_;
-    MatSS P_;
-    const double R_inv_;
-    const int maximum_iter_;
-    const HFunc h_model_;
-    const double epsi_ = 0.001;
-  };
-}
+  State x_;
+  MatSS P_;
+  const double R_inv_;
+  const int maximum_iter_;
+  const HFunc h_model_;
+  const double epsi_ = 0.001;
+};
+
 #endif //  ESEKFOM_EKF_HPP1

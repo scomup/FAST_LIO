@@ -30,15 +30,11 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
   filter_size_map_ = filter_size_map;
 }
 
-void Mapping::setState(ESEKF::State &state)
-{
-  state_ = state;
-}
 
-void Mapping::pointL2W(PointType const *const pi, PointType *const po)
+void Mapping::pointL2W(PointType const *const pi, PointType *const po, const State &state)
 {
   Vec3 p_lidar(pi->x, pi->y, pi->z);
-  Vec3 pw(state_.rot * (state_.Ril * p_lidar + state_.til) + state_.pos);
+  Vec3 pw(state.rot * (state.Ril * p_lidar + state.til) + state.pos);
 
   po->x = pw(0);
   po->y = pw(1);
@@ -47,9 +43,9 @@ void Mapping::pointL2W(PointType const *const pi, PointType *const po)
 }
 
 template <typename T>
-void Mapping::pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
+void Mapping::pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po,  const State &state)
 {
-  po = (state_.rot * (state_.Ril * pi + state_.til) + state_.pos);
+  po = (state.rot * (state.Ril * pi + state.til) + state.pos);
 }
 
 void Mapping::updateMapArea(Vec3 &pos_LiD)
@@ -58,7 +54,7 @@ void Mapping::updateMapArea(Vec3 &pos_LiD)
   return;
 }
 
-bool Mapping::initMap(const PointCloud::Ptr &cloud)
+bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
 {
   // initialize the map kdtree 
   if (ikdtree_.Root_Node == nullptr)
@@ -71,7 +67,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud)
       ikdtree_.set_downsample_param(filter_size_map_);
       for (int i = 0; i < cloud_size; i++)
       {
-        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]));
+        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
       }
       ikdtree_.Build(cloud_world->points);
       return true;
@@ -80,7 +76,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud)
   return false;
 }
 
-void Mapping::point2PlaneModel(ESEKF::HData &h_data, ESEKF::State &state, PointCloud::Ptr &cloud)
+void Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &cloud)
 {
   int cloud_size = cloud->points.size();
   norms_.resize(cloud_size);
@@ -137,7 +133,7 @@ void Mapping::point2PlaneModel(ESEKF::HData &h_data, ESEKF::State &state, PointC
     return;
   }
 
-  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), ESEKF::SZ);
+  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
   h_data.z.resize(good_index.size());
 
   for (int idx = 0; idx < good_index.size(); idx++)
@@ -158,22 +154,22 @@ void Mapping::point2PlaneModel(ESEKF::HData &h_data, ESEKF::State &state, PointC
     if (extrinsic_est_)
     {
       Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h.block<1, 3>(idx, ESEKF::L_P) = n;
-      h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
-      h_data.h.block<1, 3>(idx, ESEKF::L_Rli) = B;
-      h_data.h.block<1, 3>(idx, ESEKF::L_Tli) = C;
+      h_data.h.block<1, 3>(idx, L_P) = n;
+      h_data.h.block<1, 3>(idx, L_R) = A;
+      h_data.h.block<1, 3>(idx, L_Rli) = B;
+      h_data.h.block<1, 3>(idx, L_Tli) = C;
     }
     else
     {
-      h_data.h.block<1, 3>(idx, ESEKF::L_P) = n;
-      h_data.h.block<1, 3>(idx, ESEKF::L_R) = A;
+      h_data.h.block<1, 3>(idx, L_P) = n;
+      h_data.h.block<1, 3>(idx, L_R) = A;
     }
 
     h_data.z(idx) = residuals_[i];
   }
 }
 
-void Mapping::updateMap(PointCloud::Ptr cloud)
+void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
 {
   PointVector new_points;
   PointVector new_points_ds;
@@ -184,7 +180,7 @@ void Mapping::updateMap(PointCloud::Ptr cloud)
   for (int i = 0; i < cloud_size; i++)
   {
     /* transform to world frame */
-    pointL2W(&(cloud->points[i]), &(cloud_world->points[i]));
+    pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
     /* decide if need add to map */
     if (!neighbor_array_[i].empty())
     {

@@ -52,21 +52,19 @@ class Mapping
 {
 public:
   Mapping(bool extrinsic_est, double filter_size_map);
-
-  void setState(ESEKF::State &state);
   
-  void pointL2W(PointType const *const pi, PointType *const po);
+  void pointL2W(PointType const *const pi, PointType *const po, const State &state);
 
   template <typename T>
-  void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
+  void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po, const State &state);
 
   void updateMapArea(Vec3 &pos_LiD);
 
-  bool initMap(const PointCloud::Ptr &cloud);
+  bool initMap(const PointCloud::Ptr &cloud, const State &state);
 
-  void point2PlaneModel(ESEKF::HData &ekfom_data, ESEKF::State &state, PointCloud::Ptr &cloud);
+  void point2PlaneModel(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
 
-  void updateMap(PointCloud::Ptr cloud);
+  void updateMap(PointCloud::Ptr cloud, const State &state);
 
   void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
 
@@ -80,8 +78,6 @@ private:
   std::vector<PointVector> neighbor_array_;
 
   KD_TREE<PointType> ikdtree_;
-
-  ESEKF::State state_;
 
   std::vector<Vec3> norms_;
   std::vector<double> residuals_;
