@@ -53,13 +53,13 @@ class BacKPropagationIMU
   Eigen::Matrix<double, ESEKF::NZ, ESEKF::NZ> Q;
   void process(const SensorData &sensor_data, ESEKF::Esekf &kf_state, PointCloud::Ptr &pcl_un_);
 
-  Vec3 cov_acc;
-  Vec3 cov_gyr;
-  Vec3 cov_acc_scale;
-  Vec3 cov_gyr_scale;
-  Vec3 cov_bias_gyr;
-  Vec3 cov_bias_acc;
-  double first_lidar_time;
+  Vec3 cov_acc_;
+  Vec3 cov_gyr_;
+  Vec3 cov_acc_scale_;
+  Vec3 cov_gyr_scale_;
+  Vec3 cov_bias_gyr_;
+  Vec3 cov_bias_acc_;
+  double first_lidar_time_;
 
  private:
   void init(const SensorData &sensor_data, ESEKF::Esekf &kf_state, int &N);
@@ -70,12 +70,12 @@ class BacKPropagationIMU
   std::deque<sensor_msgs::ImuConstPtr> v_imu_;
   std::vector<ESEKF::StateBP> imu_pose_;
   std::vector<Mat3>    v_rot_pcl_;
-  Mat3 Lidar_R_wrt_IMU;
-  Vec3 Lidar_T_wrt_IMU;
-  Vec3 mean_acc;
-  Vec3 mean_gyr;
-  Vec3 angvel_last;
-  Vec3 acc_s_last;
+  Mat3 Ril_;
+  Vec3 til_;
+  Vec3 mean_acc_;
+  Vec3 mean_gyr_;
+  Vec3 angvel_last_;
+  Vec3 acc_s_last_;
   double start_timestamp_;
   double last_lidar_end_time_;
   int    init_iter_num = 1;

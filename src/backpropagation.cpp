@@ -11,15 +11,15 @@ BacKPropagationIMU::BacKPropagationIMU()
 {
   init_iter_num = 1;
   Q = ESEKF::processNoiseCov();
-  cov_acc = Vec3(0.1, 0.1, 0.1);
-  cov_gyr = Vec3(0.1, 0.1, 0.1);
-  cov_bias_gyr = Vec3(0.0001, 0.0001, 0.0001);
-  cov_bias_acc = Vec3(0.0001, 0.0001, 0.0001);
-  mean_acc = Vec3(0, 0, -1.0);
-  mean_gyr = Vec3(0, 0, 0);
-  angvel_last = Vec3::Zero();
-  Lidar_T_wrt_IMU = Vec3::Zero();
-  Lidar_R_wrt_IMU = Mat3::Identity();
+  cov_acc_ = Vec3(0.1, 0.1, 0.1);
+  cov_gyr_ = Vec3(0.1, 0.1, 0.1);
+  cov_bias_gyr_ = Vec3(0.0001, 0.0001, 0.0001);
+  cov_bias_acc_ = Vec3(0.0001, 0.0001, 0.0001);
+  mean_acc_ = Vec3(0, 0, -1.0);
+  mean_gyr_ = Vec3(0, 0, 0);
+  angvel_last_ = Vec3::Zero();
+  til_ = Vec3::Zero();
+  Ril_ = Mat3::Identity();
   last_imu_.reset(new sensor_msgs::Imu());
 }
 
@@ -28,9 +28,9 @@ BacKPropagationIMU::~BacKPropagationIMU() {}
 void BacKPropagationIMU::reset()
 {
   // ROS_WARN("reset BacKPropagationIMU");
-  mean_acc = Vec3(0, 0, -1.0);
-  mean_gyr = Vec3(0, 0, 0);
-  angvel_last = Vec3::Zero();
+  mean_acc_ = Vec3(0, 0, -1.0);
+  mean_gyr_ = Vec3(0, 0, 0);
+  angvel_last_ = Vec3::Zero();
   imu_need_init_ = true;
   start_timestamp_ = -1;
   init_iter_num = 1;
@@ -42,40 +42,40 @@ void BacKPropagationIMU::reset()
 
 void BacKPropagationIMU::setExtrinsic(const Mat4 &T)
 {
-  Lidar_T_wrt_IMU = T.block<3, 1>(0, 3);
-  Lidar_R_wrt_IMU = T.block<3, 3>(0, 0);
+  til_ = T.block<3, 1>(0, 3);
+  Ril_ = T.block<3, 3>(0, 0);
 }
 
 void BacKPropagationIMU::setExtrinsic(const Vec3 &transl)
 {
-  Lidar_T_wrt_IMU = transl;
-  Lidar_R_wrt_IMU.setIdentity();
+  til_ = transl;
+  Ril_.setIdentity();
 }
 
 void BacKPropagationIMU::setExtrinsic(const Vec3 &transl, const Mat3 &rot)
 {
-  Lidar_T_wrt_IMU = transl;
-  Lidar_R_wrt_IMU = rot;
+  til_ = transl;
+  Ril_ = rot;
 }
 
 void BacKPropagationIMU::setGyrCov(const Vec3 &scaler)
 {
-  cov_gyr_scale = scaler;
+  cov_gyr_scale_ = scaler;
 }
 
 void BacKPropagationIMU::setAccCov(const Vec3 &scaler)
 {
-  cov_acc_scale = scaler;
+  cov_acc_scale_ = scaler;
 }
 
 void BacKPropagationIMU::setGyrBiasCov(const Vec3 &b_g)
 {
-  cov_bias_gyr = b_g;
+  cov_bias_gyr_ = b_g;
 }
 
 void BacKPropagationIMU::setAccBiasCov(const Vec3 &b_a)
 {
-  cov_bias_acc = b_a;
+  cov_bias_acc_ = b_a;
 }
 
 void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::Esekf &kf_state, int &N)
@@ -92,9 +92,9 @@ void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::Esekf &kf_st
     b_first_frame_ = false;
     const auto &imu_acc = sensor_data.imu.front()->linear_acceleration;
     const auto &gyr_acc = sensor_data.imu.front()->angular_velocity;
-    mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
-    mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
-    first_lidar_time = sensor_data.lidar_beg_time;
+    mean_acc_ << imu_acc.x, imu_acc.y, imu_acc.z;
+    mean_gyr_ << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    first_lidar_time_ = sensor_data.lidar_beg_time;
   }
 
   for (const auto &imu : sensor_data.imu)
@@ -104,22 +104,22 @@ void BacKPropagationIMU::init(const SensorData &sensor_data, ESEKF::Esekf &kf_st
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
 
-    mean_acc += (cur_acc - mean_acc) / N;
-    mean_gyr += (cur_gyr - mean_gyr) / N;
+    mean_acc_ += (cur_acc - mean_acc_) / N;
+    mean_gyr_ += (cur_gyr - mean_gyr_) / N;
 
-    cov_acc = cov_acc * (N - 1.0) / N + (cur_acc - mean_acc).cwiseProduct(cur_acc - mean_acc) * (N - 1.0) / (N * N);
-    cov_gyr = cov_gyr * (N - 1.0) / N + (cur_gyr - mean_gyr).cwiseProduct(cur_gyr - mean_gyr) * (N - 1.0) / (N * N);
+    cov_acc_ = cov_acc_ * (N - 1.0) / N + (cur_acc - mean_acc_).cwiseProduct(cur_acc - mean_acc_) * (N - 1.0) / (N * N);
+    cov_gyr_ = cov_gyr_ * (N - 1.0) / N + (cur_gyr - mean_gyr_).cwiseProduct(cur_gyr - mean_gyr_) * (N - 1.0) / (N * N);
 
-    // std::cout<<"acc norm: "<<cur_acc.norm()<<" "<<mean_acc.norm()<<std::endl;
+    // std::cout<<"acc norm: "<<cur_acc.norm()<<" "<<mean_acc_.norm()<<std::endl;
 
     N++;
   }
   ESEKF::State init_state = kf_state.getState();
-  init_state.grav = -mean_acc / mean_acc.norm() * G_m_s2;
+  init_state.grav = -mean_acc_ / mean_acc_.norm() * G_m_s2;
 
-  init_state.bg = mean_gyr;
-  init_state.til = Lidar_T_wrt_IMU;
-  init_state.Ril = Eigen::Quaterniond(Lidar_R_wrt_IMU);
+  init_state.bg = mean_gyr_;
+  init_state.til = til_;
+  init_state.Ril = Eigen::Quaterniond(Ril_);
   kf_state.setState(init_state);
 
   Eigen::Matrix<double, ESEKF::SZ, ESEKF::SZ> init_P = kf_state.getP();
@@ -146,13 +146,11 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
   /*** sort point clouds by offset time ***/
   pcl_out = *(sensor_data.lidar);
   sort(pcl_out.points.begin(), pcl_out.points.end(), time_list);
-  // std::cout<<"[ IMU Process ]: Process lidar from "<<pcl_beg_time<<" to "<<pcl_end_time<<", " \
-  //          <<sensor_data.imu.size()<<" imu msgs from "<<imu_beg_time<<" to "<<imu_end_time<<std::endl;
 
   /*** Initialize IMU pose ***/
   ESEKF::State imu_state = kf_state.getState();
   imu_pose_.clear();
-  imu_pose_.push_back(ESEKF::StateBP(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
+  imu_pose_.push_back(ESEKF::StateBP(0.0, acc_s_last_, angvel_last_, imu_state.vel, imu_state.pos, imu_state.rot));
 
 
   double dt = 0;
@@ -173,7 +171,7 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
         0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
         0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z));
 
-    acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
+    acc_avr = acc_avr * G_m_s2 / mean_acc_.norm(); // - state_inout.ba;
 
     if (head->header.stamp.toSec() < last_lidar_end_time_)
     {
@@ -186,22 +184,21 @@ void BacKPropagationIMU::undistortCloud(const SensorData &sensor_data, ESEKF::Es
 
     u.acc = acc_avr;
     u.gyro = angvel_avr;
-    Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
-    Q.block<3, 3>(3, 3).diagonal() = cov_acc;
-    Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
-    Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
+    Q.block<3, 3>(0, 0).diagonal() = cov_gyr_;
+    Q.block<3, 3>(3, 3).diagonal() = cov_acc_;
+    Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr_;
+    Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc_;
     kf_state.predict(dt, Q, u);
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.getState();
-    angvel_last = angvel_avr - imu_state.bg;
-    acc_s_last = imu_state.rot * (acc_avr - imu_state.ba);
-    for (int i = 0; i < 3; i++)
-    {
-      acc_s_last[i] += imu_state.grav[i];
-    }
+    angvel_last_ = angvel_avr - imu_state.bg;
+    acc_s_last_ = imu_state.rot * (acc_avr - imu_state.ba);
+
+    acc_s_last_ += imu_state.grav;
+
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
-    imu_pose_.push_back(ESEKF::StateBP(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot));
+    imu_pose_.push_back(ESEKF::StateBP(offs_t, acc_s_last_, angvel_last_, imu_state.vel, imu_state.pos, imu_state.rot));
   }
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
@@ -275,11 +272,11 @@ void BacKPropagationIMU::process(const SensorData &sensor_data, ESEKF::Esekf &kf
     ESEKF::State imu_state = kf_state.getState();
     if (init_iter_num > MAX_INI_COUNT)
     {
-      cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
+      cov_acc_ *= pow(G_m_s2 / mean_acc_.norm(), 2);
       imu_need_init_ = false;
 
-      cov_acc = cov_acc_scale;
-      cov_gyr = cov_gyr_scale;
+      cov_acc_ = cov_acc_scale_;
+      cov_gyr_ = cov_gyr_scale_;
       ROS_INFO("IMU Initial Done");
     }
     return;

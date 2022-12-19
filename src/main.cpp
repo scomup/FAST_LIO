@@ -194,7 +194,7 @@ int main(int argc, char **argv)
   SensorData sensor_data;
   PointCloud::Ptr cloud_deskew(new PointCloud());
   PointCloud::Ptr cloud_ds(new PointCloud());
-  double first_lidar_time = 0.0;
+  double first_lidar_time_ = 0.0;
   bool flg_first_scan = true;
 
   signal(SIGINT, SigHandle);
@@ -209,8 +209,8 @@ int main(int argc, char **argv)
     {
       if (flg_first_scan)
       {
-        first_lidar_time = sensor_data.lidar_beg_time;
-        p_imu->first_lidar_time = first_lidar_time;
+        first_lidar_time_ = sensor_data.lidar_beg_time;
+        p_imu->first_lidar_time_ = first_lidar_time_;
         flg_first_scan = false;
         continue;
       }
