@@ -4,6 +4,7 @@
 #include "imu_propagation.h"
 #include "preprocess.h"
 #include <algorithm>
+#include "state.h"
 
 class LidarOdomROS
 {
@@ -20,6 +21,13 @@ public:
   void runCB(const ros::TimerEvent& e);
 
 private:
+  void pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time);
+
+  void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
+
+
+  template <typename T> void setOdomMsg(T &out);
+
   std::mutex mtx_;
   ros::NodeHandle nh_;
   double last_timestamp_lidar_ = 0;
@@ -39,6 +47,7 @@ private:
   ros::Publisher pub_cloud_;
   pcl::VoxelGrid<PointType> downsampe_filter_;
   ros::Timer run_timer_;
+  ESEKF::State state_;
   //ros::Publisher pub_cloud2 = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
 
   ros::Publisher pub_odom_;

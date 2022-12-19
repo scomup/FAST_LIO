@@ -3,12 +3,18 @@
 #include "lidar_odom_ros.h"
 
 const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
-bool flg_exit = false;
 
-void SigHandle(int sig)
+template <typename T>
+void LidarOdomROS::setOdomMsg(T &out)
 {
-  flg_exit = true;
-  ROS_WARN("catch sig %d", sig);
+  out.pose.position.x = state_.pos(0);
+  out.pose.position.y = state_.pos(1);
+  out.pose.position.z = state_.pos(2);
+  Eigen::Quaterniond q = Eigen::Quaterniond(state_.rot);
+  out.pose.orientation.x = q.x();
+  out.pose.orientation.y = q.y();
+  out.pose.orientation.z = q.z();
+  out.pose.orientation.w = q.w();
 }
 
 
@@ -186,8 +192,8 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     }
 
     // Segment the map in lidar FOV
-    auto state = kf_->getState();
-    mapping_->setState(state);
+    state_ = kf_->getState();
+    mapping_->setState(state_);
     // Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
     // updateMapArea(pos_lid);
 
@@ -214,7 +220,7 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     kf_->iteratedUpdate(cloud_ds);
 
     //  Publish odometry
-    mapping_->pubOdom(pub_odom_, *kf_, lidar_end_time_);
+    pubOdom(pub_odom_, *kf_, lidar_end_time_);
 
     //  add the feature points to map kdtree
     mapping_->updateMap(cloud_ds);
@@ -222,8 +228,58 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     //  Publish points
     if (scan_pub_)
     {
-      mapping_->pubCloud(pub_cloud_, cloud_deskew, lidar_end_time_);
-      // mapping_->pubCloud(pub_cloud2, cloud_deskew_cmp, lidar_end_time_);
+      pubCloud(pub_cloud_, cloud_deskew, lidar_end_time_);
     }
   }
+}
+
+void LidarOdomROS::pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time)
+{
+  nav_msgs::Odometry odom;
+
+  odom.header.frame_id = "map";
+  odom.child_frame_id = "imu";
+  odom.header.stamp = ros::Time().fromSec(time);
+  setOdomMsg(odom.pose);
+  pub.publish(odom);
+  auto P = kf.getP();
+  for (int i = 0; i < 6; i++)
+  {
+    int k = i < 3 ? i + 3 : i - 3;
+    odom.pose.covariance[i * 6 + 0] = P(k, 3);
+    odom.pose.covariance[i * 6 + 1] = P(k, 4);
+    odom.pose.covariance[i * 6 + 2] = P(k, 5);
+    odom.pose.covariance[i * 6 + 3] = P(k, 0);
+    odom.pose.covariance[i * 6 + 4] = P(k, 1);
+    odom.pose.covariance[i * 6 + 5] = P(k, 2);
+  }
+
+  static tf::TransformBroadcaster br;
+  tf::Transform transform;
+  tf::Quaternion q;
+  transform.setOrigin(tf::Vector3(odom.pose.pose.position.x,
+                                  odom.pose.pose.position.y,
+                                  odom.pose.pose.position.z));
+  q.setW(odom.pose.pose.orientation.w);
+  q.setX(odom.pose.pose.orientation.x);
+  q.setY(odom.pose.pose.orientation.y);
+  q.setZ(odom.pose.pose.orientation.z);
+  transform.setRotation(q);
+  br.sendTransform(tf::StampedTransform(transform, odom.header.stamp, "map", "imu"));
+}
+
+void LidarOdomROS::pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time)
+{
+  int size = cloud->points.size();
+  PointCloud::Ptr cloud_world(new PointCloud(size, 1));
+  for (int i = 0; i < size; i++)
+  {
+    mapping_->pointL2W(&cloud->points[i], &cloud_world->points[i]);
+  }
+
+  sensor_msgs::PointCloud2 cloud_msg;
+  pcl::toROSMsg(*cloud_world, cloud_msg);
+  cloud_msg.header.stamp = ros::Time().fromSec(time);
+  cloud_msg.header.frame_id = "map";
+  pub_cloud.publish(cloud_msg);
 }

@@ -54,7 +54,7 @@ public:
   Mapping(bool extrinsic_est, double filter_size_map);
 
   void setState(ESEKF::State &state);
-
+  
   void pointL2W(PointType const *const pi, PointType *const po);
 
   template <typename T>
@@ -70,10 +70,7 @@ public:
 
   void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
 
-  template <typename T>
-  void setOdomMsg(T &out);
 
-  void pubOdom(const ros::Publisher &pub, const ESEKF::Esekf &kf, double time);
 
 private:
   double filter_size_map_ = 0;
