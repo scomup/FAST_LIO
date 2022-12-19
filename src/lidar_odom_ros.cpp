@@ -75,7 +75,6 @@ LidarOdomROS::LidarOdomROS()
 
 void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  mtx_.lock();
   if (msg->header.stamp.toSec() < last_timestamp_lidar_)
   {
     ROS_ERROR("lidar loop back, clear buffer");
@@ -84,10 +83,11 @@ void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
   PointCloud::Ptr ptr(new PointCloud());
   p_pre_->process(msg, ptr);
+  std::lock_guard<std::mutex> lock(mtx_);
   lidar_buffer_.push_back(ptr);
   time_buffer_.push_back(msg->header.stamp.toSec());
   last_timestamp_lidar_ = msg->header.stamp.toSec();
-  mtx_.unlock();
+  
 }
 
 void LidarOdomROS::imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
@@ -96,7 +96,7 @@ void LidarOdomROS::imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
 
   double timestamp = msg->header.stamp.toSec();
 
-  mtx_.lock();
+  std::lock_guard<std::mutex> lock(mtx_);
 
   if (timestamp < newest_imu_stamp_)
   {
@@ -107,11 +107,12 @@ void LidarOdomROS::imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
   newest_imu_stamp_ = timestamp;
 
   imu_buffer_.push_back(msg);
-  mtx_.unlock();
 }
 
 bool LidarOdomROS::syncData(SensorData &sensor_data)
 {
+  std::lock_guard<std::mutex> lock(mtx_);
+
   if (lidar_buffer_.empty() || imu_buffer_.empty())
   {
     return false;
