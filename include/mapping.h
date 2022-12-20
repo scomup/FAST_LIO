@@ -44,6 +44,7 @@
 #include "state.h"
 #include "esekf.h"
 #include "ikd_Tree.h"
+#include "ndt_grid.h"
 
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
@@ -82,5 +83,6 @@ private:
 
   std::vector<Vec3> norms_;
   std::vector<double> residuals_;
+  boost::shared_ptr<NdtGrid<PointType>> grid_;
 
 };

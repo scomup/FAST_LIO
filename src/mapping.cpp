@@ -81,6 +81,8 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
 {
   extrinsic_est_ = extrinsic_est;
   filter_size_map_ = filter_size_map;
+  grid_ = boost::make_shared<NdtGrid<PointType>>();
+  grid_->setResolution(filter_size_map);
 }
 
 void Mapping::updateMapArea(Vec3 &pose_lidar)
@@ -91,22 +93,18 @@ void Mapping::updateMapArea(Vec3 &pose_lidar)
 
 bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
 {
-  // initialize the map kdtree 
-  if (ikdtree_.Root_Node == nullptr)
+  int cloud_size = cloud->points.size();
+  if (cloud_size > 5)
   {
 
-    int cloud_size = cloud->points.size();
-    if (cloud_size > 5)
+    PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
+    for (int i = 0; i < cloud_size; i++)
     {
-      PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
-      ikdtree_.set_downsample_param(filter_size_map_);
-      for (int i = 0; i < cloud_size; i++)
-      {
-        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
-      }
-      ikdtree_.Build(cloud_world->points);
-      return true;
+      pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
     }
+    grid_->setInput(cloud_world);
+
+    return true;
   }
   return false;
 }
@@ -206,50 +204,11 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
 
 void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
 {
-  PointVector new_points;
-  PointVector new_points_ds;
   int cloud_size = cloud->points.size();
-
   PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
-
   for (int i = 0; i < cloud_size; i++)
   {
-    /* transform to world frame */
     pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
-    /* decide if need add to map */
-    if (!neighbor_array_[i].empty())
-    {
-      const PointVector &neighbors = neighbor_array_[i];
-      bool need_add = true;
-      BoxPointType Box_of_Point;
-      PointType downsample_result, mid_point;
-      mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      float dist = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
-      if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
-      {
-        new_points_ds.push_back(cloud_world->points[i]);
-        continue;
-      }
-      for (int j = 0; j < neighbors.size(); j++)
-      {
-        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist)
-        {
-          need_add = false;
-          break;
-        }
-      }
-      if (need_add)
-        new_points.push_back(cloud_world->points[i]);
-    }
-    else
-    {
-      new_points.push_back(cloud_world->points[i]);
-    }
   }
-
-  ikdtree_.Add_Points(new_points, true);
-  ikdtree_.Add_Points(new_points_ds, false);
+  grid_->update(cloud_world);
 }
-
