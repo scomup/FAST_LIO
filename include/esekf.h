@@ -17,7 +17,7 @@ MatNN processNoiseCov();
 class Esekf
 {
 public:
-  using HFunc = std::function<void(HData &, State &, PointCloud::Ptr &)>;
+  using HFunc = std::function<bool (HData &, State &, PointCloud::Ptr &)>;
 
   Esekf(const double R, const int maximum_iter, const HFunc h_model);
 
@@ -45,7 +45,7 @@ public:
 
   void setAccBiasCov(const Vec3 &b_a);
 
-  void undistortCloud(const SensorData &sensor_data, PointCloud::Ptr &pcl_un);
+  void propagation(const SensorData &sensor_data, PointCloud::Ptr &pcl_un);
 
 
 private:
@@ -57,7 +57,7 @@ private:
 
   bool initImu(const SensorData &sensor_data);
 
-  void propagation(const SensorData &sensor_data, PointCloud &pcl_in_out);
+  void undistortCloud(const SensorData &sensor_data, PointCloud &pcl_in_out);
 
   Vec3 cov_acc_;
   Vec3 cov_gyr_;

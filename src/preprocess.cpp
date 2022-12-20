@@ -1,5 +1,8 @@
 #include "preprocess.h"
 
+const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
+
+
 Preprocess::Preprocess(double blind, int time_unit, int point_filter_num)
     : blind_(blind),
       time_unit_(time_unit),
@@ -62,4 +65,5 @@ void Preprocess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       }
     }
   }
+  std::sort(pl_.points.begin(), pl_.points.end(), time_cmp);
 }

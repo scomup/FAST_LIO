@@ -33,6 +33,11 @@ typedef Eigen::Matrix<double, 4, 1> Vec4;
 typedef Eigen::Matrix3d Mat3;
 typedef Eigen::Matrix<double, 4, 4> Mat4;
 
+struct LidarData
+{
+  PointCloud::Ptr cloud;
+  double stamp;
+};
 
 struct SensorData // Lidar data and imu dates for the curent process
 {
@@ -40,13 +45,9 @@ struct SensorData // Lidar data and imu dates for the curent process
   {
     this->lidar.reset(new PointCloud());
   };
-  double lidar_end_time;
+  double lidar_stamp;
   PointCloud::Ptr lidar;
   std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
-
-float calc_dist(PointType p1, PointType p2);
-
-bool esti_plane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold);
 
 #endif

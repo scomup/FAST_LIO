@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "state.h"
 
+
 class LidarOdomROS
 {
 
@@ -33,8 +34,7 @@ private:
   double newest_imu_stamp_ = -1.0;
   double lidar_end_time_ = 0;
 
-  std::deque<double> time_buffer_;
-  std::deque<PointCloud::Ptr> lidar_buffer_;
+  std::deque<LidarData> lidar_buffer_;
   std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
   bool scan_pub_ = false;
   boost::shared_ptr<Preprocess> p_pre_;

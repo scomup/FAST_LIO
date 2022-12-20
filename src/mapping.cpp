@@ -16,6 +16,8 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/common/distances.h>
+
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
@@ -24,14 +26,41 @@
 
 #include "mapping.h"
 
-Mapping::Mapping(bool extrinsic_est, double filter_size_map)
+
+bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold)
 {
-  extrinsic_est_ = extrinsic_est;
-  filter_size_map_ = filter_size_map;
+  Eigen::Matrix<double, NUM_MATCH_POINTS, 3> A;
+  Eigen::Matrix<double, NUM_MATCH_POINTS, 1> b;
+  A.setZero();
+  b.setOnes();
+  b *= -1.0f;
+
+  for (int j = 0; j < NUM_MATCH_POINTS; j++)
+  {
+    A(j, 0) = point[j].x;
+    A(j, 1) = point[j].y;
+    A(j, 2) = point[j].z;
+  }
+
+  Eigen::Matrix<double, 3, 1> norm_vec = A.colPivHouseholderQr().solve(b);
+
+  double n = norm_vec.norm();
+  pca_result(0) = norm_vec(0) / n;
+  pca_result(1) = norm_vec(1) / n;
+  pca_result(2) = norm_vec(2) / n;
+  pca_result(3) = 1.0 / n;
+
+  for (int j = 0; j < NUM_MATCH_POINTS; j++)
+  {
+    if (fabs(pca_result(0) * point[j].x + pca_result(1) * point[j].y + pca_result(2) * point[j].z + pca_result(3)) > threshold)
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
-
-void Mapping::pointL2W(PointType const *const pi, PointType *const po, const State &state)
+void pointL2W(PointType const *const pi, PointType *const po, const State &state)
 {
   Vec3 p_lidar(pi->x, pi->y, pi->z);
   Vec3 pw(state.rot * (state.Ril * p_lidar + state.til) + state.pos);
@@ -43,9 +72,15 @@ void Mapping::pointL2W(PointType const *const pi, PointType *const po, const Sta
 }
 
 template <typename T>
-void Mapping::pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po,  const State &state)
+void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po,  const State &state)
 {
   po = (state.rot * (state.Ril * pi + state.til) + state.pos);
+}
+
+Mapping::Mapping(bool extrinsic_est, double filter_size_map)
+{
+  extrinsic_est_ = extrinsic_est;
+  filter_size_map_ = filter_size_map;
 }
 
 void Mapping::updateMapArea(Vec3 &pos_LiD)
@@ -76,7 +111,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
   return false;
 }
 
-void Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &cloud)
+bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &cloud)
 {
   int cloud_size = cloud->points.size();
   norms_.resize(cloud_size);
@@ -111,7 +146,7 @@ void Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
 
     Vec4 plane;
 
-    if (esti_plane(plane, points_near, 0.1))
+    if (calcPlane(plane, points_near, 0.1))
     {
       float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
       float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
@@ -128,9 +163,8 @@ void Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
 
   if (good_index.size() < 1)
   {
-    h_data.valid = false;
     ROS_WARN("No Effective Points! \n");
-    return;
+    return false;
   }
 
   h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
@@ -167,6 +201,7 @@ void Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
 
     h_data.z(idx) = residuals_[i];
   }
+  return true;
 }
 
 void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
@@ -191,7 +226,7 @@ void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
       mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
       mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
       mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      float dist = calc_dist(cloud_world->points[i], mid_point);
+      float dist = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
       if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
       {
         new_points_ds.push_back(cloud_world->points[i]);
@@ -199,7 +234,7 @@ void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
       }
       for (int j = 0; j < neighbors.size(); j++)
       {
-        if (calc_dist(neighbors[j], mid_point) < dist)
+        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist)
         {
           need_add = false;
           break;

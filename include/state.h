@@ -5,7 +5,6 @@
 
 struct HData
 {
-  bool valid;
   bool converge;
   Eigen::Matrix<double, Eigen::Dynamic, 1> z;              // residual
   Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h; // jacobian H
@@ -107,3 +106,4 @@ struct BPInfo
     rot = R;
   }
 };
+

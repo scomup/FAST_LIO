@@ -48,26 +48,27 @@
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
 
+void pointL2W(PointType const *const pi, PointType *const po, const State &state);
+
+template <typename T>
+void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po, const State &state);
+
+float calc_dist(PointType p1, PointType p2);
+
+bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold);
+
 class Mapping
 {
 public:
   Mapping(bool extrinsic_est, double filter_size_map);
   
-  void pointL2W(PointType const *const pi, PointType *const po, const State &state);
-
-  template <typename T>
-  void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po, const State &state);
-
   void updateMapArea(Vec3 &pos_LiD);
 
   bool initMap(const PointCloud::Ptr &cloud, const State &state);
 
-  void point2PlaneModel(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
+  bool point2PlaneModel(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
 
   void updateMap(PointCloud::Ptr cloud, const State &state);
-
-  void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
-
 
 
 private:

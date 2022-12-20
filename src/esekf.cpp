@@ -147,13 +147,13 @@ bool Esekf::initImu(const SensorData &sensor_data)
   return false;
 }
 
-void Esekf::propagation(const SensorData &sensor_data, PointCloud &cloud)
+void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
 {
   // add the imu of the last frame-tail to the of current frame-head
   auto imus = sensor_data.imu;
   imus.push_front(last_imu_);
   const double &imu_end_time = imus.back()->header.stamp.toSec();
-  const double &pcl_end_time = sensor_data.lidar_end_time;
+  const double &pcl_end_time = sensor_data.lidar_stamp;
 
   // sort point clouds by offset time
   cloud = *(sensor_data.lidar);
@@ -252,7 +252,7 @@ void Esekf::propagation(const SensorData &sensor_data, PointCloud &cloud)
   }
 }
 
-void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud::Ptr &cur_pcl_un)
+void Esekf::propagation(const SensorData &sensor_data, PointCloud::Ptr &cur_pcl_un)
 {
   if (sensor_data.imu.empty())
   {
@@ -269,7 +269,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud::Ptr &cur_p
   }
 
   ROS_ASSERT(sensor_data.lidar != nullptr);
-  propagation(sensor_data, *cur_pcl_un);
+  undistortCloud(sensor_data, *cur_pcl_un);
 }
 
 // Forward Propagation  III-C
@@ -286,7 +286,6 @@ void Esekf::predict(double &dt, MatNN &Q, const InputU &u)
 void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
 {
   HData h_data;
-  h_data.valid = true;
   h_data.converge = true;
   int t = 0;
   State x_propagated = x_; // forward propagated state, paper (18) x^
@@ -294,21 +293,18 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
 
   for (int i = -1; i < maximum_iter_; i++)
   {
-    h_data.valid = true;
-
-    h_model_(h_data, x_, cloud_ds);
-
-    if (!h_data.valid)
+    if (!h_model_(h_data, x_, cloud_ds))
     {
       continue;
     }
 
     VecS delta_x = x_.minus(x_propagated); // paper (18) x^k - x^
 
-    auto H = h_data.h;
+    auto& H = h_data.h;
+    auto& z = h_data.z;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
     K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
-    VecS dx = -K * h_data.z - (MatSS::Identity() - K * H) * delta_x;                    // paper (18) notice: J_inv = I
+    VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x;                    // paper (18) notice: J_inv = I
 
     x_ = x_.plus(dx); // update current state. paper (18)
 

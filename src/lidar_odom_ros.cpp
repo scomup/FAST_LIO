@@ -2,7 +2,6 @@
 
 #include "lidar_odom_ros.h"
 
-const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
 
 template <typename T>
 void LidarOdomROS::setOdomMsg(T &out)
@@ -52,8 +51,8 @@ LidarOdomROS::LidarOdomROS()
   mapping_ = boost::make_shared<Mapping>(extrinsic_est, filter_size_map);
   auto h_model = [this](HData &ekfom_data,
                             State &x,
-                            PointCloud::Ptr &cloud)                       
-    {this->mapping_->point2PlaneModel(ekfom_data, x, cloud); };
+                            PointCloud::Ptr &cloud) -> bool                   
+    {bool vaild = this->mapping_->point2PlaneModel(ekfom_data, x, cloud); return vaild;};
 
   kf_ = boost::make_shared<Esekf>(0.001, max_iteration, h_model);
 
@@ -89,8 +88,7 @@ void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
   PointCloud::Ptr ptr(new PointCloud());
   p_pre_->process(msg, ptr);
   std::lock_guard<std::mutex> lock(mtx_);
-  lidar_buffer_.push_back(ptr);
-  time_buffer_.push_back(msg->header.stamp.toSec());
+  lidar_buffer_.push_back({ptr,msg->header.stamp.toSec()});
   last_timestamp_lidar_ = msg->header.stamp.toSec();
   
 }
@@ -124,13 +122,10 @@ bool LidarOdomROS::syncData(SensorData &sensor_data)
   }
 
   // add lidar
-  auto &cloud = lidar_buffer_.front();
-  std::sort(cloud->points.begin(), cloud->points.end(), time_cmp);
-
-  sensor_data.lidar = cloud;
-  double stamp = time_buffer_.front();
-  sensor_data.lidar_end_time = stamp + cloud->points.back().time;
-  lidar_end_time_ = sensor_data.lidar_end_time;
+  auto &cloud_info = lidar_buffer_.front();
+  sensor_data.lidar = cloud_info.cloud;
+  sensor_data.lidar_stamp = cloud_info.stamp + cloud_info.cloud->points.back().time;
+  lidar_end_time_ = sensor_data.lidar_stamp;
 
   if (newest_imu_stamp_ < lidar_end_time_)
   {
@@ -150,7 +145,6 @@ bool LidarOdomROS::syncData(SensorData &sensor_data)
   }
 
   lidar_buffer_.pop_front();
-  time_buffer_.pop_front();
   return true;
 }
 
@@ -168,7 +162,8 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     }
     PointCloud::Ptr cloud_deskew(new PointCloud());
 
-    kf_->undistortCloud(sensor_data, cloud_deskew); // deskew lidar points. by backward propagation
+    // imu forward propagation, and deskew lidar points. 
+    kf_->propagation(sensor_data, cloud_deskew); 
 
     /*
     PointCloud::Ptr cloud_deskew_cmp(new PointCloud());
@@ -274,7 +269,7 @@ void LidarOdomROS::pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cl
 
   for (int i = 0; i < size; i++)
   {
-    mapping_->pointL2W(&cloud->points[i], &cloud_world->points[i], state);
+    pointL2W(&cloud->points[i], &cloud_world->points[i], state);
   }
 
   sensor_msgs::PointCloud2 cloud_msg;
