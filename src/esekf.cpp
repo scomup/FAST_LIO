@@ -5,7 +5,6 @@
 
 #define MAX_INI_COUNT (10)
 
-
 Esekf::Esekf(const double R, const int maximum_iter, const HFunc h_model)
     : R_inv_(1. / R),
       maximum_iter_(maximum_iter),
@@ -129,19 +128,20 @@ bool Esekf::initImu(const SensorData &sensor_data)
     x_.bg = mean_gyr_;
     x_.til = til_;
     x_.Ril = Eigen::Quaterniond(Ril_);
-    Eigen::Matrix<double, SZ, SZ> P0;
-    P0.setIdentity();
-    P0(6, 6) = P0(7, 7) = P0(8, 8) = 0.00001;
-    P0(9, 9) = P0(10, 10) = P0(11, 11) = 0.00001;
-    P0(15, 15) = P0(16, 16) = P0(17, 17) = 0.0001;
-    P0(18, 18) = P0(19, 19) = P0(20, 20) = 0.001;
-    P0(21, 21) = P0(22, 22) = 0.00001;
-    P_ = P0;
+    P_.setIdentity();
+    P_.block<3, 3>(L_Rli, L_Rli) = 0.00001 * Eigen::Matrix3d::Identity();
+    P_.block<3, 3>(L_Tli, L_Tli) = 0.00001 * Eigen::Matrix3d::Identity();
+    P_.block<3, 3>(L_Bw, L_Bw) = 0.0001 * Eigen::Matrix3d::Identity();
+    P_.block<3, 3>(L_Ba, L_Ba) = 0.001 * Eigen::Matrix3d::Identity();
+    P_.block<3, 3>(L_G, L_G) = 0.00001 * Eigen::Matrix3d::Identity();
+
     last_imu_ = sensor_data.imu.back();
-    Q_.block<3, 3>(0, 0).diagonal() = cov_gyr_;
-    Q_.block<3, 3>(3, 3).diagonal() = cov_acc_;
-    Q_.block<3, 3>(6, 6).diagonal() = cov_bias_gyr_;
-    Q_.block<3, 3>(9, 9).diagonal() = cov_bias_acc_;
+    Q_.block<3, 3>(L_Nw, L_Nw).diagonal() = cov_gyr_;
+    Q_.block<3, 3>(L_Na, L_Na).diagonal() = cov_acc_;
+    Q_.block<3, 3>(L_Nbw, L_Nbw).diagonal() = cov_bias_gyr_;
+    Q_.block<3, 3>(L_Nba, L_Nba).diagonal() = cov_bias_acc_;
+
+
     return true;
   }
   return false;
@@ -153,7 +153,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
   auto imus = sensor_data.imu;
   imus.push_front(last_imu_);
   const double &imu_end_time = imus.back()->header.stamp.toSec();
-  const double &pcl_end_time = sensor_data.lidar_stamp;
+  const double &cloud_end_time = sensor_data.lidar_stamp;
 
   // sort point clouds by offset time
   cloud = *(sensor_data.lidar);
@@ -199,17 +199,17 @@ void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
 
     acc_last_ += x_.grav;
 
-    double &&offset_time = tail->header.stamp.toSec() - pcl_end_time;
+    double &&offset_time = tail->header.stamp.toSec() - cloud_end_time;
     imu_pose_.push_back(BPInfo(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
   }
 
   // calculated the pos and attitude prediction at the frame-end
-  double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
-  dt = note * (pcl_end_time - imu_end_time);
+  double sign = cloud_end_time > imu_end_time ? 1.0 : -1.0;
+  dt = sign * (cloud_end_time - imu_end_time);
   predict(dt, Q_, u);
 
   last_imu_ = sensor_data.imu.back();
-  last_lidar_end_time_ = pcl_end_time;
+  last_lidar_end_time_ = cloud_end_time;
 
   // undistort each lidar point (backward propagation)
   if (cloud.points.begin() == cloud.points.end())

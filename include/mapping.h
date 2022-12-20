@@ -62,7 +62,7 @@ class Mapping
 public:
   Mapping(bool extrinsic_est, double filter_size_map);
   
-  void updateMapArea(Vec3 &pos_LiD);
+  void updateMapArea(Vec3 &pose_lidar);
 
   bool initMap(const PointCloud::Ptr &cloud, const State &state);
 

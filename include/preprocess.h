@@ -40,7 +40,7 @@ public:
 
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out);
 
-  PointCloud pl_; // cloud in lidar frame.
+  PointCloud cloud_; // cloud in lidar frame.
   int point_filter_num_, time_unit_;
   double blind_;
   double time_unit_scale_;

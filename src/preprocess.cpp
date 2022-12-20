@@ -10,7 +10,7 @@ Preprocess::Preprocess(double blind, int time_unit, int point_filter_num)
 
 Preprocess::~Preprocess() {}
 
-void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out)
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &cloud_out)
 {
   switch (time_unit_)
   {
@@ -33,16 +33,16 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
 
   velodyneHandler(msg);
 
-  *pcl_out = pl_;
+  *cloud_out = cloud_;
 }
 
 void Preprocess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  pl_.clear();
+  cloud_.clear();
 
-  pcl::PointCloud<velodyne_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
-  int plsize = pl_orig.points.size();
+  pcl::PointCloud<velodyne_ros::Point> cloud_orig;
+  pcl::fromROSMsg(*msg, cloud_orig);
+  int plsize = cloud_orig.points.size();
   if (plsize == 0)
     return;
 
@@ -53,17 +53,17 @@ void Preprocess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
 
       PointType added_pt;
-      added_pt.x = pl_orig.points[i].x;
-      added_pt.y = pl_orig.points[i].y;
-      added_pt.z = pl_orig.points[i].z;
-      added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.time = pl_orig.points[i].time;
+      added_pt.x = cloud_orig.points[i].x;
+      added_pt.y = cloud_orig.points[i].y;
+      added_pt.z = cloud_orig.points[i].z;
+      added_pt.intensity = cloud_orig.points[i].intensity;
+      added_pt.time = cloud_orig.points[i].time;
       //* time_unit_scale_; // time unit: ms // std::cout<<added_pt.time<<std::endl;
       if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind_ * blind_))
       {
-        pl_.points.push_back(added_pt); 
+        cloud_.points.push_back(added_pt); 
       }
     }
   }
-  std::sort(pl_.points.begin(), pl_.points.end(), time_cmp);
+  std::sort(cloud_.points.begin(), cloud_.points.end(), time_cmp);
 }

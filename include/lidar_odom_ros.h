@@ -16,7 +16,7 @@ public:
 
   void imuCB(const sensor_msgs::Imu::ConstPtr &msg_in);
 
-  bool syncData(SensorData &sensor_data);
+  bool getSensorData(SensorData &sensor_data);
 
   void runCB(const ros::TimerEvent& e);
 
@@ -34,8 +34,8 @@ private:
   double newest_imu_stamp_ = -1.0;
   double lidar_end_time_ = 0;
 
-  std::deque<LidarData> lidar_buffer_;
-  std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
+  std::deque<LidarData> lidar_q_;
+  std::deque<sensor_msgs::Imu::ConstPtr> imu_q_;
   bool scan_pub_ = false;
   boost::shared_ptr<Preprocess> p_pre_;
   boost::shared_ptr<Esekf> kf_;

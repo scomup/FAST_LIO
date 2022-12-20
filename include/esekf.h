@@ -66,7 +66,6 @@ private:
   Vec3 mean_acc_;
   Vec3 mean_gyr_;
 
-  Eigen::Matrix<double, NZ, NZ> Q_;
 
   PointCloud::Ptr cur_pcl_un_;
 
@@ -85,6 +84,7 @@ private:
 
   State x_;
   MatSS P_;
+  MatNN Q_;
   const double R_inv_;
   const int maximum_iter_;
   const HFunc h_model_;

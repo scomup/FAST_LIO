@@ -82,13 +82,13 @@ void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
   if (msg->header.stamp.toSec() < last_timestamp_lidar_)
   {
     ROS_ERROR("lidar loop back, clear buffer");
-    lidar_buffer_.clear();
+    lidar_q_.clear();
   }
 
   PointCloud::Ptr ptr(new PointCloud());
   p_pre_->process(msg, ptr);
   std::lock_guard<std::mutex> lock(mtx_);
-  lidar_buffer_.push_back({ptr,msg->header.stamp.toSec()});
+  lidar_q_.push_back({ptr,msg->header.stamp.toSec()});
   last_timestamp_lidar_ = msg->header.stamp.toSec();
   
 }
@@ -104,25 +104,25 @@ void LidarOdomROS::imuCB(const sensor_msgs::Imu::ConstPtr &msg_in)
   if (timestamp < newest_imu_stamp_)
   {
     ROS_WARN("imu loop back, clear buffer");
-    imu_buffer_.clear();
+    imu_q_.clear();
   }
 
   newest_imu_stamp_ = timestamp;
 
-  imu_buffer_.push_back(msg);
+  imu_q_.push_back(msg);
 }
 
-bool LidarOdomROS::syncData(SensorData &sensor_data)
+bool LidarOdomROS::getSensorData(SensorData &sensor_data)
 {
   std::lock_guard<std::mutex> lock(mtx_);
 
-  if (lidar_buffer_.empty() || imu_buffer_.empty())
+  if (lidar_q_.empty() || imu_q_.empty())
   {
     return false;
   }
 
   // add lidar
-  auto &cloud_info = lidar_buffer_.front();
+  auto &cloud_info = lidar_q_.front();
   sensor_data.lidar = cloud_info.cloud;
   sensor_data.lidar_stamp = cloud_info.stamp + cloud_info.cloud->points.back().time;
   lidar_end_time_ = sensor_data.lidar_stamp;
@@ -133,18 +133,18 @@ bool LidarOdomROS::syncData(SensorData &sensor_data)
   }
 
   // push imu data, and pop from imu buffer
-  double imu_time = imu_buffer_.front()->header.stamp.toSec();
+  double imu_time = imu_q_.front()->header.stamp.toSec();
   sensor_data.imu.clear();
-  while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time_))
+  while (!imu_q_.empty())
   {
-    imu_time = imu_buffer_.front()->header.stamp.toSec();
+    imu_time = imu_q_.front()->header.stamp.toSec();
     if (imu_time > lidar_end_time_)
       break;
-    sensor_data.imu.push_back(imu_buffer_.front());
-    imu_buffer_.pop_front();
+    sensor_data.imu.push_back(imu_q_.front());
+    imu_q_.pop_front();
   }
 
-  lidar_buffer_.pop_front();
+  lidar_q_.pop_front();
   return true;
 }
 
@@ -152,7 +152,7 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
 {
   SensorData sensor_data;
 
-  if (syncData(sensor_data))
+  if (getSensorData(sensor_data))
   {
     if (flg_first_scan_)
     {
@@ -187,8 +187,8 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
 
     // Segment the map in lidar FOV
     state_ = kf_->getState();
-    // Vec3 pos_lid = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
-    // updateMapArea(pos_lid);
+    // Vec3 pose_lidar = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
+    // updateMapArea(pose_lidar);
 
     // downsample the feature points in a scan
     PointCloud::Ptr cloud_ds(new PointCloud());

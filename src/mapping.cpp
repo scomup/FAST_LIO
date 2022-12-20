@@ -83,7 +83,7 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
   filter_size_map_ = filter_size_map;
 }
 
-void Mapping::updateMapArea(Vec3 &pos_LiD)
+void Mapping::updateMapArea(Vec3 &pose_lidar)
 {
   // Removes the point far from the current position.
   return;
