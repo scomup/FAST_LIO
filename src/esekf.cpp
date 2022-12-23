@@ -302,10 +302,15 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
 
     auto& H = h_data.h;
     auto& z = h_data.z;
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
-    K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
-    VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x;                    // paper (18) notice: J_inv = I
+    //Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
+    //K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
+    //VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x;                    // paper (18) notice: J_inv = I
 
+    auto Hessian = H.transpose() * R_inv_* H + P_.inverse();
+    auto Hessian_inv = Hessian.inverse();
+    auto gradiant = H.transpose() * R_inv_* z + P_.inverse() * delta_x;
+    VecS dx = -Hessian_inv * gradiant;
+    
     x_ = x_.plus(dx); // update current state. paper (18)
 
     h_data.converge = true;
@@ -328,7 +333,8 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
 
     if (t > 1 || i == maximum_iter_ - 1)
     {
-      P_ = (MatSS::Identity() - K * H) * P_; // paper (19)
+      //P_ = (MatSS::Identity() - K * H) * P_; // paper (19)
+      P_ = Hessian_inv;
       return;
     }
   }
