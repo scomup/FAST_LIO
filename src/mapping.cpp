@@ -93,6 +93,8 @@ void Mapping::updateMapArea(Vec3 &pose_lidar)
 
 bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
 {
+  if(init_)
+  return false;
   int cloud_size = cloud->points.size();
   if (cloud_size > 5)
   {
@@ -103,7 +105,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
       pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
     }
     grid_->setInput(cloud_world);
-
+    init_ = true;
     return true;
   }
   return false;
@@ -116,89 +118,59 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
   residuals_.resize(cloud_size);
   neighbor_array_.resize(cloud_size);
 
-  std::vector<int> good_index;
+  std::vector<Eigen::Matrix<double, 3, SZ>> H;
+  std::vector<Eigen::Matrix<double, 3, 1>>  Z;
 
+  std::vector<int> good_index;
   for (int i = 0; i < cloud_size; i++) 
   {
     PointType &point = cloud->points[i];
     PointType point_world;
 
     Vec3 pl(point.x, point.y, point.z);
-    Vec3 pw(state.rot * (state.Ril * pl + state.til) + state.pos);
-    point_world.x = pw(0);
-    point_world.y = pw(1);
-    point_world.z = pw(2);
-    point_world.intensity = point.intensity;
+    Vec3 pi((state.Ril * pl + state.til));
+    Vec3 pw(state.rot * pi + state.pos);
+    point_world.x = pw.x();
+    point_world.y = pw.y();
+    point_world.z = pw.z();
+    std::vector<int> neighbor_ids;
+    grid_->getNeighborhood7(point_world, neighbor_ids);
 
-    std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-    auto &points_near = neighbor_array_[i];
-    if (h_data.converge)
+    for (auto vid : neighbor_ids)
     {
-      ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-
-      if(points_near.size() < NUM_MATCH_POINTS)
-        continue;
-      if(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
-        continue;
+      auto cell = grid_->getCell(vid);
+      const Eigen::Vector3d p_mean = cell->mean_;
+       Eigen::Matrix3d cinvL = cell->icovL_;
+      const Eigen::Vector3d p_diff = pw - p_mean;
+      Mat3 pi_skew = skewSymMat(pi);
+      Eigen::Matrix<double, 3, SZ> h = Eigen::Matrix<double, 3, SZ>::Zero();
+      Eigen::Matrix<double, 3, 1> z = Eigen::Matrix<double, 3, 1>::Zero();
+      h.block<3, 3>(0, L_P) = cinvL;
+      h.block<3, 3>(0, L_R) = -cinvL * state.rot * pi_skew;
+      z = cinvL * p_diff;
+      H.push_back(h);
+      Z.push_back(z);
     }
-
-    Vec4 plane;
-
-    if (calcPlane(plane, points_near, 0.1))
-    {
-      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
-      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
-
-      if (s < 0.9) 
-        continue;
-
-      good_index.push_back(i);
-
-      norms_[i] = plane.head<3>();
-      residuals_[i] = r;
-    }
+    
   }
 
-  if (good_index.size() < 1)
+
+  int n = H.size();
+  if (n < 1)
   {
     ROS_WARN("No Effective Points! \n");
     return false;
   }
+ 
+  h_data.h = Eigen::MatrixXd::Zero(3 * n, SZ);
+  h_data.z.resize(3 * n);
 
-  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
-  h_data.z.resize(good_index.size());
-
-  for (int idx = 0; idx < good_index.size(); idx++)
+  for (int idx = 0; idx < n; idx++)
   {
-    int i = good_index[idx];
-
-    Vec3 point = cloud->points[i].getVector3fMap().template cast<double>(); // point in lidar frame
-
-    Mat3 point_skew  = skewSymMat(point);
-
-    Vec3 point_i = state.Ril * point + state.til;  // point in imu frame
-    Mat3 point_i_skew = skewSymMat(point_i);
-
-    Vec3& n = norms_[i];
-
-    Vec3 C(state.rot.transpose() * n);
-    Vec3 A(point_i_skew * C);
-    if (extrinsic_est_)
-    {
-      Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
-      h_data.h.block<1, 3>(idx, L_Rli) = B;
-      h_data.h.block<1, 3>(idx, L_Tli) = C;
-    }
-    else
-    {
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
-    }
-
-    h_data.z(idx) = residuals_[i];
+    h_data.h.block<3, SZ>(idx * 3, 0) = H[idx];
+    h_data.z.block<3, 1>(idx * 3, 0) = Z[idx];
   }
+  
   return true;
 }
 

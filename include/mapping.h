@@ -75,7 +75,7 @@ public:
 private:
   double filter_size_map_ = 0;
 
-  bool extrinsic_est_ = true;
+  bool extrinsic_est_ = false;
 
   std::vector<PointVector> neighbor_array_;
 
@@ -83,6 +83,7 @@ private:
 
   std::vector<Vec3> norms_;
   std::vector<double> residuals_;
+  bool init_ = false;
   boost::shared_ptr<NdtGrid<PointType>> grid_;
 
 };
