@@ -82,6 +82,7 @@ add_executable(fastlio_mapping
   src/ikd_Tree.cpp 
   src/preprocess.cpp
   src/lidar_odom_ros.cpp
+  src/ndt_grid.cpp
   )
   
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})

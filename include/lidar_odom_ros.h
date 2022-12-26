@@ -49,5 +49,6 @@ private:
   //ros::Publisher pub_cloud2 = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
 
   ros::Publisher pub_odom_;
+  ros::Publisher pub_maker_;
   bool flg_first_scan_ = true;
 };

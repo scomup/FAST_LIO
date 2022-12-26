@@ -1,6 +1,7 @@
 #define PCL_NO_PRECOMPILE
 
 #include "lidar_odom_ros.h"
+#include <visualization_msgs/MarkerArray.h>
 
 
 template <typename T>
@@ -52,7 +53,7 @@ LidarOdomROS::LidarOdomROS()
   auto h_model = [this](HData &ekfom_data,
                             State &x,
                             PointCloud::Ptr &cloud) -> bool                   
-    {bool vaild = this->mapping_->point2PlaneModel(ekfom_data, x, cloud); return vaild;};
+    {bool vaild = this->mapping_->H2Model(ekfom_data, x, cloud); return vaild;};
 
   kf_ = boost::make_shared<Esekf>(0.001, max_iteration, h_model);
 
@@ -74,6 +75,7 @@ LidarOdomROS::LidarOdomROS()
   pub_cloud_ = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
   // ros::Publisher pub_cloud2 = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
   pub_odom_ = nh_.advertise<nav_msgs::Odometry>("/Odometry", 100000);
+  pub_maker_ = nh_.advertise<visualization_msgs::MarkerArray>("/maker", 100000);
   run_timer_ = nh_.createTimer(ros::Duration(0.001), &LidarOdomROS::runCB, this );
 }
 
@@ -214,6 +216,8 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
 
     //  add the feature points to map kdtree
     mapping_->updateMap(cloud_ds, state_);
+    auto maker = mapping_->makeMarkerArray();
+    pub_maker_.publish(maker);
 
     //  Publish odometry
     pubOdom(pub_odom_, *kf_, lidar_end_time_);

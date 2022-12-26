@@ -44,6 +44,8 @@
 #include "state.h"
 #include "esekf.h"
 #include "ikd_Tree.h"
+#include "ndt_grid.h"
+#include <visualization_msgs/MarkerArray.h>
 
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
@@ -67,8 +69,11 @@ public:
   bool initMap(const PointCloud::Ptr &cloud, const State &state);
 
   bool point2PlaneModel(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
+  bool H2Model(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
 
   void updateMap(PointCloud::Ptr cloud, const State &state);
+
+  visualization_msgs::MarkerArray makeMarkerArray();
 
 
 private:
@@ -79,6 +84,7 @@ private:
   std::vector<PointVector> neighbor_array_;
 
   KD_TREE<PointType> ikdtree_;
+  boost::shared_ptr<NdtGrid<PointType>> grid_;
 
   std::vector<Vec3> norms_;
   std::vector<double> residuals_;

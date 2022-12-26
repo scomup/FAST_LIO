@@ -81,6 +81,9 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
 {
   extrinsic_est_ = extrinsic_est;
   filter_size_map_ = filter_size_map;
+  grid_ = boost::make_shared<NdtGrid<PointType>>();
+  grid_->setResolution(1);
+
 }
 
 void Mapping::updateMapArea(Vec3 &pose_lidar)
@@ -105,10 +108,83 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
         pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
       }
       ikdtree_.Build(cloud_world->points);
+      grid_->setInput(cloud_world);
       return true;
     }
   }
   return false;
+}
+
+bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
+{
+  int cloud_size = cloud->points.size();
+  norms_.resize(cloud_size);
+  residuals_.resize(cloud_size);
+  neighbor_array_.resize(cloud_size);
+
+  std::vector<int> good_index;
+  std::vector<int> cell_idx(cloud_size);
+
+  for (int i = 0; i < cloud_size; i++)
+  {
+    PointType &point = cloud->points[i];
+    PointType point_world;
+
+    Vec3 pl(point.x, point.y, point.z);
+    Vec3 pw(state.rot * (state.Ril * pl + state.til) + state.pos);
+    point_world.x = pw(0);
+    point_world.y = pw(1);
+    point_world.z = pw(2);
+    int idx = grid_->getNearest(point_world);
+    if (idx == -1)
+      continue;
+    good_index.push_back(i);
+    auto &cell = grid_->getCell(idx);
+    residuals_[i] = cell->norm_.x() * point_world.x + cell->norm_.y() * point_world.y + cell->norm_.z() * point_world.z + 1;
+    norms_[i] = cell->norm_;
+    cell_idx[i] = idx;
+  }
+
+  if (good_index.size() < 1)
+  {
+    ROS_WARN("No Effective Points! \n");
+    return false;
+  }
+
+  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
+  h_data.z.resize(good_index.size());
+
+  for (int idx = 0; idx < good_index.size(); idx++)
+  {
+    int i = good_index[idx];
+
+    Vec3 point = cloud->points[i].getVector3fMap().template cast<double>(); // point in lidar frame
+
+    Mat3 point_skew = skewSymMat(point);
+
+    Vec3 point_i = state.Ril * point + state.til; // point in imu frame
+    Mat3 point_i_skew = skewSymMat(point_i);
+    Vec3& n = norms_[i];
+
+    Vec3 C(state.rot.transpose() * n);
+    Vec3 A(point_i_skew * C);
+    if (extrinsic_est_)
+    {
+      Vec3 B(point_skew * state.Ril.transpose() * C);
+      h_data.h.block<1, 3>(idx, L_P) = n;
+      h_data.h.block<1, 3>(idx, L_R) = A;
+      h_data.h.block<1, 3>(idx, L_Rli) = B;
+      h_data.h.block<1, 3>(idx, L_Tli) = C;
+    }
+    else
+    {
+      h_data.h.block<1, 3>(idx, L_P) = n;
+      h_data.h.block<1, 3>(idx, L_R) = A;
+    }
+
+    h_data.z(idx) = residuals_[i]; 
+  }
+  return true;
 }
 
 bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &cloud)
@@ -248,8 +324,58 @@ void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
       new_points.push_back(cloud_world->points[i]);
     }
   }
+  grid_->update(cloud_world);
 
   ikdtree_.Add_Points(new_points, true);
   ikdtree_.Add_Points(new_points_ds, false);
 }
+
+visualization_msgs::MarkerArray Mapping::makeMarkerArray()
+{
+    auto cells = grid_->getCells();
+    visualization_msgs::MarkerArray marker_array;
+    int id = 0;
+    for (uint i = 0; i < cells.size(); i++)
+    {
+        auto& cell = cells[i];
+        if(cell == nullptr)
+            continue;
+        
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = "/map";
+        marker.header.stamp = ros::Time::now();
+        marker.ns = "basic_shapes" + std::to_string(id);
+        marker.id = id++;
+        marker.type = visualization_msgs::Marker::LINE_LIST;
+        marker.action = visualization_msgs::Marker::ADD;
+        marker.lifetime = ros::Duration();
+
+        geometry_msgs::Point pointA, pointB;
+        pointA.x = cell->mean_.x();
+        pointA.y = cell->mean_.y();
+        pointA.z = cell->mean_.z();
+        pointB.x = pointA.x + cell->norm_.x() / 1.;
+        pointB.y = pointA.y + cell->norm_.y() / 1.;
+        pointB.z = pointA.z + cell->norm_.z() / 1.;
+        marker.pose.orientation.x = 0;
+        marker.pose.orientation.y = 0;
+        marker.pose.orientation.z = 0;
+        marker.pose.orientation.w = 1;
+        marker.scale.x = 0.01;
+        //marker.scale.y = sqrt(svd.singularValues().y()) * 3;
+        //marker.scale.z = sqrt(svd.singularValues().z()) * 3;
+
+        marker.color.r = 0;
+        marker.color.g = 1;
+        marker.color.b = 0;
+        marker.color.a = 1;
+        marker.points.push_back(pointA);
+        marker.points.push_back(pointB);
+
+
+        marker_array.markers.push_back(marker);
+    }
+    return marker_array;
+}
+
 
