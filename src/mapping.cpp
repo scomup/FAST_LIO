@@ -136,45 +136,28 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     point_world.z = pw(2);
     //point_world.intensity = point.intensity;
 
-    std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-    auto &points_near = neighbor_array_[i];
-    if (h_data.converge)
+
+    if (true)
     {
-      ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-
-      if(points_near.size() < NUM_MATCH_POINTS)
-        continue;
-      if(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
-        continue;
-    }
-
-    Vec4 plane;
-
-    if (calcPlane(plane, points_near, 0.1))
-    {
-      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
-      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
-
-      if (s < 0.9) 
-        continue;
       int idx = grid_->getNearest(point_world);
       if (idx == -1)
         continue;
       auto &cell = grid_->getCell(idx);
 
+
+      float r = cell->norm_.dot(pw-cell->mean_); 
+      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
+
+      if (s < 0.9) 
+        continue;
+
       good_index.push_back(i);
       norms_[i] = cell->norm_;
-      residuals_[i] = cell->norm_.dot(pw-cell->mean_);
+      residuals_[i] = r;
       //norms_[i] = plane.head<3>();
       //residuals_[i] = r;
       
     }
-  }
-
-  if (good_index.size() < 1)
-  {
-    ROS_WARN("No Effective Points! \n");
-    return false;
   }
 
   if (good_index.size() < 1)
@@ -325,41 +308,8 @@ void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
     /* transform to world frame */
     pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
     /* decide if need add to map */
-    if (!neighbor_array_[i].empty())
-    {
-      const PointVector &neighbors = neighbor_array_[i];
-      bool need_add = true;
-      BoxPointType Box_of_Point;
-      PointType downsample_result, mid_point;
-      mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      float dist = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
-      if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
-      {
-        new_points_ds.push_back(cloud_world->points[i]);
-        continue;
-      }
-      for (int j = 0; j < neighbors.size(); j++)
-      {
-        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist)
-        {
-          need_add = false;
-          break;
-        }
-      }
-      if (need_add)
-        new_points.push_back(cloud_world->points[i]);
-    }
-    else
-    {
-      new_points.push_back(cloud_world->points[i]);
-    }
   }
   grid_->update(cloud_world);
-
-  ikdtree_.Add_Points(new_points, true);
-  ikdtree_.Add_Points(new_points_ds, false);
 }
 
 visualization_msgs::MarkerArray Mapping::makeMarkerArray()

@@ -216,8 +216,8 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
 
     //  add the feature points to map kdtree
     mapping_->updateMap(cloud_ds, state_);
-    auto maker = mapping_->makeMarkerArray();
-    pub_maker_.publish(maker);
+    //auto maker = mapping_->makeMarkerArray();
+    //pub_maker_.publish(maker);
 
     //  Publish odometry
     pubOdom(pub_odom_, *kf_, lidar_end_time_);

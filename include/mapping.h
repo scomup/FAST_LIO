@@ -82,6 +82,7 @@ private:
   bool extrinsic_est_ = true;
 
   std::vector<PointVector> neighbor_array_;
+  std::vector<int> nearest_cell_;
 
   KD_TREE<PointType> ikdtree_;
   boost::shared_ptr<NdtGrid<PointType>> grid_;
