@@ -22,6 +22,8 @@ Esekf::Esekf(const double R, const int maximum_iter, const HFunc h_model)
   til_ = Vec3::Zero();
   Ril_ = Mat3::Identity();
   last_imu_.reset(new sensor_msgs::Imu());
+  mean_acc_ = Vec3::Zero();
+  mean_gyr_ = Vec3::Zero();
 };
 
 // paper (2) f(x, u): kinematic model

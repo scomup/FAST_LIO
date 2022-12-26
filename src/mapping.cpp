@@ -82,7 +82,7 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
   extrinsic_est_ = extrinsic_est;
   filter_size_map_ = filter_size_map;
   grid_ = boost::make_shared<NdtGrid<PointType>>();
-  grid_->setResolution(filter_size_map);
+  grid_->setResolution(2);
 }
 
 void Mapping::updateMapArea(Vec3 &pose_lidar)
@@ -133,11 +133,11 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
     point_world.x = pw.x();
     point_world.y = pw.y();
     point_world.z = pw.z();
-    std::vector<int> neighbor_ids;
-    grid_->getNeighborhood7(point_world, neighbor_ids);
+    int vid = grid_->getNearest(point_world);
 
-    for (auto vid : neighbor_ids)
-    {
+    if(vid == -1)
+      continue;
+
       auto cell = grid_->getCell(vid);
       const Eigen::Vector3d p_mean = cell->mean_;
        Eigen::Matrix3d cinvL = cell->icovL_;
@@ -150,7 +150,7 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
       z = cinvL * p_diff;
       H.push_back(h);
       Z.push_back(z);
-    }
+    
     
   }
 

@@ -21,6 +21,7 @@ public:
     void setInput(typename pcl::PointCloud<PointT>::ConstPtr cloud);
     void update(typename pcl::PointCloud<PointT>::ConstPtr cloud);
     int getNeighborhood7(const PointT &point, std::vector<int> &neighbors) const;
+    int getNearest(const PointT &point) const;
     void setResolution(const double r);
 
 private:

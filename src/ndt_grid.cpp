@@ -7,13 +7,16 @@ template <typename PointT>
 NdtGrid<PointT>::NdtGrid() : min_covar_eigvalue_mult_(0.01),
                              min_points_per_voxel_(6)
 {
-    neighborhood_.push_back(Eigen::Vector3i(0, 0, 0));
-    neighborhood_.push_back(Eigen::Vector3i(1, 0, 0));
-    neighborhood_.push_back(Eigen::Vector3i(-1, 0, 0));
-    neighborhood_.push_back(Eigen::Vector3i(0, 1, 0));
-    neighborhood_.push_back(Eigen::Vector3i(0, -1, 0));
-    neighborhood_.push_back(Eigen::Vector3i(0, 0, 1));
-    neighborhood_.push_back(Eigen::Vector3i(0, 0, -1));
+    int win = 5;
+    for (int i = -win; i < win; i++)
+        for (int j = -win; j < win; j++)
+            for (int k = -win; k < win; k++)
+                neighborhood_.push_back(Eigen::Vector3i(i, j, k));
+    
+    std::sort(neighborhood_.begin(), 
+         neighborhood_.end(), 
+         [](Eigen::Vector3i a, Eigen::Vector3i b) {return a.squaredNorm() < b.squaredNorm(); });
+
 }
 
 template <typename PointT>
@@ -172,14 +175,35 @@ bool NdtGrid<PointT>::contains(const Eigen::Vector3i &idx3d) const
 }
 
 template <typename PointT>
-int NdtGrid<PointT>::getNeighborhood7(const PointT &point, std::vector<int> &neighbors) const
+int NdtGrid<PointT>::getNearest(const PointT &point) const
 {
+
     Eigen::Vector3d p = point.getVector3fMap().template cast<double>();
     Eigen::Vector3i pi = (p / resolution_).array().floor().cast<int>().matrix();
     int num = 0;
     for (auto i : neighborhood_)
     {
         Eigen::Vector3i n = pi + i;
+        int idx = getFlatIdx(n, cell_box_);
+        if (idx == -1)
+            continue;
+        auto &cell = cells_[idx];
+        if (cell == nullptr)
+            continue;
+        return idx;
+    }
+    return -1;
+}
+
+template <typename PointT>
+int NdtGrid<PointT>::getNeighborhood7(const PointT &point, std::vector<int> &neighbors) const
+{
+    Eigen::Vector3d p = point.getVector3fMap().template cast<double>();
+    Eigen::Vector3i pi = (p / resolution_).array().floor().cast<int>().matrix();
+    int num = 0;
+    for (int i = 0; i < 7; i++)
+    {
+        Eigen::Vector3i n = pi + neighborhood_[i];
         int idx = getFlatIdx(n, cell_box_);
         if (idx == -1)
             continue;
