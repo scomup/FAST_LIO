@@ -121,7 +121,7 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
   norms_.resize(cloud_size);
   residuals_.resize(cloud_size);
   neighbor_array_.resize(cloud_size);
-
+  nearest_cell_.resize(cloud_size);
   std::vector<int> good_index;
 
   for (int i = 0; i < cloud_size; i++)
@@ -134,30 +134,37 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     point_world.x = pw(0);
     point_world.y = pw(1);
     point_world.z = pw(2);
-    //point_world.intensity = point.intensity;
 
 
-    if (true)
+    if (h_data.converge)
     {
+      nearest_cell_[i] = -1;
       int idx = grid_->getNearest(point_world);
       if (idx == -1)
         continue;
       auto &cell = grid_->getCell(idx);
 
-
-      float r = cell->norm_.dot(pw-cell->mean_); 
-      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
-
-      if (s < 0.9) 
+      if (cell->type_ == 0)
         continue;
+      nearest_cell_[i] = idx;
+    }
+    int idx = nearest_cell_[i];
+    if (idx == -1)
+      continue;
+    auto &cell = grid_->getCell(idx);
 
-      good_index.push_back(i);
-      norms_[i] = cell->norm_;
-      residuals_[i] = r;
+
+    float r = cell->norm_.dot(pw-cell->mean_);
+    float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
+
+    if (s < 0.9)
+      continue;
+
+    good_index.push_back(i);
+    norms_[i] = cell->norm_;
+    residuals_[i] = r;
       //norms_[i] = plane.head<3>();
       //residuals_[i] = r;
-      
-    }
   }
 
   if (good_index.size() < 1)
@@ -321,6 +328,8 @@ visualization_msgs::MarkerArray Mapping::makeMarkerArray()
     {
         auto& cell = cells[i];
         if(cell == nullptr)
+            continue;
+        if(cell->type_ == 0)
             continue;
         
         visualization_msgs::Marker marker;

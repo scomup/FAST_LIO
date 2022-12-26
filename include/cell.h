@@ -19,6 +19,7 @@ public:
 		norm_.setZero();
 		sum_ .setZero();
 		ppt_.setIdentity();
+		int type_ = 0;
 	}
 
 	Eigen::Vector3d mean_;
@@ -28,6 +29,7 @@ public:
 	//Eigen::Matrix3d icovL_;
 	Eigen::Matrix3d ppt_;
     int num_;
+	int type_;
 };
 
 

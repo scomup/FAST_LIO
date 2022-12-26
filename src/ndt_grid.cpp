@@ -121,7 +121,8 @@ void NdtGrid<PointT>::update(typename pcl::PointCloud<PointT>::ConstPtr cloud)
 
         Eigen::Vector3d norm = eigen_vec.col(0);
         cell->norm_ = norm / norm.norm();
-
+        cell->type_ = 2 * eigen_val(0, 0) < eigen_val(1, 1) ? 1 : 0;
+        //printf("eigen_val:%f %f %f\n",eigen_val(0, 0),eigen_val(1, 1),eigen_val(2, 2));
         if (cell->icov_.maxCoeff() == std::numeric_limits<float>::infinity() ||
             cell->icov_.minCoeff() == -std::numeric_limits<float>::infinity())
         {
