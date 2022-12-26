@@ -15,8 +15,8 @@ class NdtGrid
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     NdtGrid();
-    const std::shared_ptr<Cell> getCell(const PointT &point) const;
-    const std::shared_ptr<Cell> getCell(const int idx) const;
+    const std::shared_ptr<Cell> getCell(const PointT &point);
+    const std::shared_ptr<Cell> getCell(const int idx);
     const std::vector<std::shared_ptr<Cell>> &getCells() const;
     void setInput(typename pcl::PointCloud<PointT>::ConstPtr cloud);
     void update(typename pcl::PointCloud<PointT>::ConstPtr cloud);
@@ -30,6 +30,7 @@ private:
     int getFlatIdx(const Eigen::Vector3d &p) const;
     bool contains(const Eigen::Vector3i &p) const;
     void reset();
+    void updateCell(std::shared_ptr<Cell>& cell);
 
     std::vector<std::shared_ptr<Cell>> cells_;
     std::vector<Eigen::Vector3i, Eigen::aligned_allocator<Eigen::Vector3i>> neighborhood_;

@@ -48,10 +48,69 @@ void NdtGrid<PointT>::setInput(typename pcl::PointCloud<PointT>::ConstPtr cloud)
 }
 
 template <typename PointT>
+void NdtGrid<PointT>::updateCell(std::shared_ptr<Cell> &cell)
+{
+    // Eigen values and vectors calculated to prevent near singular matrices
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver;
+    Eigen::Matrix3d eigen_val;
+    Eigen::Matrix3d eigen_vec;
+    Eigen::Matrix3d cov;
+    // Eigen values less than a threshold of max eigen value are inflated to a set fraction of the max eigen value.
+    double min_covar_eigvalue;
+    // Normalize mean
+    cell->mean_ = cell->sum_ / cell->num_;
+
+    if (cell->num_ < min_points_per_voxel_)
+    {
+        return;
+    }
+
+    // Single pass covariance calculation
+    cov = (cell->ppt_ - 2 * (cell->sum_ * cell->mean_.transpose())) / cell->num_ + cell->mean_ * cell->mean_.transpose();
+    cov *= (cell->num_ - 1.0) / cell->num_;
+
+    // Normalize Eigen Val such that max no more than 100x min.
+    eigensolver.compute(cov);
+
+    eigen_val = eigensolver.eigenvalues().asDiagonal();
+    eigen_vec = eigensolver.eigenvectors();
+
+    if (eigen_val(0, 0) < 0 || eigen_val(1, 1) < 0 || eigen_val(2, 2) <= 0)
+    {
+        cell.reset();
+        return;
+    }
+
+    // Avoids matrices near singularities (eq 6.11)[Magnusson 2009]
+    min_covar_eigvalue = min_covar_eigvalue_mult_ * eigen_val(2, 2);
+    if (eigen_val(0, 0) < min_covar_eigvalue)
+    {
+        eigen_val(0, 0) = min_covar_eigvalue;
+
+        if (eigen_val(1, 1) < min_covar_eigvalue)
+        {
+            eigen_val(1, 1) = min_covar_eigvalue;
+        }
+
+        cov = eigen_vec * eigen_val * eigen_vec.inverse();
+    }
+
+    // cell->icov_ = cov.inverse();
+
+    Eigen::Vector3d norm = eigen_vec.col(0);
+    cell->norm_ = norm / norm.norm();
+
+    // if (cell->icov_.maxCoeff() == std::numeric_limits<float>::infinity() ||
+    //     cell->icov_.minCoeff() == -std::numeric_limits<float>::infinity())
+    //{
+    //     cell.reset();
+    // }
+}
+
+template <typename PointT>
 void NdtGrid<PointT>::update(typename pcl::PointCloud<PointT>::ConstPtr cloud)
 {
     grow(cloud);
-    std::set<int> updated_idxs;
     for (uint i = 0; i < cloud->points.size(); i++)
     {
         Eigen::Vector3d p = cloud->points[i].getVector3fMap().template cast<double>();
@@ -61,91 +120,35 @@ void NdtGrid<PointT>::update(typename pcl::PointCloud<PointT>::ConstPtr cloud)
         {
             cell = std::make_shared<Cell>();
         }
-        updated_idxs.insert(idx);
         cell->num_ += 1;
         cell->sum_ += p;
         cell->ppt_ += p * p.transpose();
+        cell->update_ = true;
     }
+    
 
-    // Eigen values and vectors calculated to prevent near singular matrices
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver;
-    Eigen::Matrix3d eigen_val;
-    Eigen::Matrix3d eigen_vec;
-    Eigen::Matrix3d cov;
-    // Eigen values less than a threshold of max eigen value are inflated to a set fraction of the max eigen value.
-    double min_covar_eigvalue;
-    for (auto idx : updated_idxs)
-    {
-        auto &cell = cells_[idx];
-        // Normalize mean
-        cell->mean_ = cell->sum_ / cell->num_;
-
-        if (cell->num_ < min_points_per_voxel_)
-        {
-            continue;
-        }
-
-        // Single pass covariance calculation
-        cov = (cell->ppt_ - 2 * (cell->sum_ * cell->mean_.transpose())) /
-                  cell->num_ +
-              cell->mean_ * cell->mean_.transpose();
-        cov *= (cell->num_ - 1.0) / cell->num_;
-
-        // Normalize Eigen Val such that max no more than 100x min.
-        eigensolver.compute(cov);
-
-        eigen_val = eigensolver.eigenvalues().asDiagonal();
-        eigen_vec = eigensolver.eigenvectors();
-
-        if (eigen_val(0, 0) < 0 || eigen_val(1, 1) < 0 || eigen_val(2, 2) <= 0)
-        {
-            cell.reset();
-            continue;
-        }
-
-        // Avoids matrices near singularities (eq 6.11)[Magnusson 2009]
-        min_covar_eigvalue = min_covar_eigvalue_mult_ * eigen_val(2, 2);
-        if (eigen_val(0, 0) < min_covar_eigvalue)
-        {
-            eigen_val(0, 0) = min_covar_eigvalue;
-
-            if (eigen_val(1, 1) < min_covar_eigvalue)
-            {
-                eigen_val(1, 1) = min_covar_eigvalue;
-            }
-
-            cov = eigen_vec * eigen_val * eigen_vec.inverse();
-        }
-
-        cell->icov_ = cov.inverse();
-
-        Eigen::Vector3d norm = eigen_vec.col(0);
-        cell->norm_ = norm / norm.norm();
-        cell->type_ = 2 * eigen_val(0, 0) < eigen_val(1, 1) ? 1 : 0;
-        //printf("eigen_val:%f %f %f\n",eigen_val(0, 0),eigen_val(1, 1),eigen_val(2, 2));
-        if (cell->icov_.maxCoeff() == std::numeric_limits<float>::infinity() ||
-            cell->icov_.minCoeff() == -std::numeric_limits<float>::infinity())
-        {
-            cell.reset();
-        }
-    }
 }
 
 template <typename PointT>
-const std::shared_ptr<Cell> NdtGrid<PointT>::getCell(const int idx) const
+const std::shared_ptr<Cell> NdtGrid<PointT>::getCell(const int idx)
 {
-    return cells_[idx];
+    auto& cell = cells_[idx];
+    if(cell->update_ == true)
+    {
+        updateCell(cell);
+    }
+    return cell;
 }
 
 template <typename PointT>
-const std::shared_ptr<Cell> NdtGrid<PointT>::getCell(const PointT &point) const
+const std::shared_ptr<Cell> NdtGrid<PointT>::getCell(const PointT &point)
 {
     Eigen::Vector3d p = point.getVector3fMap().template cast<double>();
     int idx = getFlatIdx(p);
     if (idx == -1)
         return nullptr;
     else
-        return cells_[idx];
+        return getCell(idx);
 }
 
 template <typename PointT>
