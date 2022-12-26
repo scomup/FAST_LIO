@@ -190,6 +190,7 @@ int NdtGrid<PointT>::getNearest(const PointT &point) const
     auto &cell = cells_[idx];
     if (cell == nullptr)
         return -1;
+        
     return idx;
 }
 

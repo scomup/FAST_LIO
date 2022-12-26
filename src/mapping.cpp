@@ -123,7 +123,6 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
   neighbor_array_.resize(cloud_size);
 
   std::vector<int> good_index;
-  std::vector<int> cell_idx(cloud_size);
 
   for (int i = 0; i < cloud_size; i++)
   {
@@ -135,14 +134,47 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     point_world.x = pw(0);
     point_world.y = pw(1);
     point_world.z = pw(2);
-    int idx = grid_->getNearest(point_world);
-    if (idx == -1)
-      continue;
-    good_index.push_back(i);
-    auto &cell = grid_->getCell(idx);
-    residuals_[i] = cell->norm_.x() * point_world.x + cell->norm_.y() * point_world.y + cell->norm_.z() * point_world.z + 1;
-    norms_[i] = cell->norm_;
-    cell_idx[i] = idx;
+    //point_world.intensity = point.intensity;
+
+    std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+    auto &points_near = neighbor_array_[i];
+    if (h_data.converge)
+    {
+      ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+
+      if(points_near.size() < NUM_MATCH_POINTS)
+        continue;
+      if(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
+        continue;
+    }
+
+    Vec4 plane;
+
+    if (calcPlane(plane, points_near, 0.1))
+    {
+      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
+      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
+
+      if (s < 0.9) 
+        continue;
+      int idx = grid_->getNearest(point_world);
+      if (idx == -1)
+        continue;
+      auto &cell = grid_->getCell(idx);
+
+      good_index.push_back(i);
+      norms_[i] = cell->norm_;
+      residuals_[i] = cell->norm_.dot(pw-cell->mean_);
+      //norms_[i] = plane.head<3>();
+      //residuals_[i] = r;
+      
+    }
+  }
+
+  if (good_index.size() < 1)
+  {
+    ROS_WARN("No Effective Points! \n");
+    return false;
   }
 
   if (good_index.size() < 1)
