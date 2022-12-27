@@ -124,6 +124,10 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
   nearest_idx_.resize(cloud_size);
 
   std::vector<int> good_index;
+    int good = 0;
+    int all = 0;
+
+  auto t0 = omp_get_wtime();
 
   for (int i = 0; i < cloud_size; i++)
   {
@@ -143,19 +147,21 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     {
       int idx = grid_->getNearest(point_world);
       nearest_idx_[i] = idx;
-
+      /*
       ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-
       if(points_near.size() < NUM_MATCH_POINTS)
         continue;
       if(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
         continue;
+      */
     }
+    all++;
 
     Vec4 plane;
-
-    if (calcPlane(plane, points_near, 0.1))
+    if (true)
+    //if (calcPlane(plane, points_near, 0.1))
     {
+      good++;
       int idx = nearest_idx_[i];
       if (idx == -1)
         continue;
@@ -172,9 +178,13 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
       residuals_[i] = cell->norm_.dot(pw - cell->mean_);
       //norms_[i] = plane.head<3>();
       //residuals_[i] = r;
-      
     }
   }
+  auto t1 = omp_get_wtime();
+
+  printf("init %f ms\n", (t1-t0)*1000.);
+  //printf("t2-t1 %f ms\n", (t2-t1)*1000.);
+  //printf("t3-t2 %f ms\n", (t3-t2)*1000.);
 
   if (good_index.size() < 1)
   {
@@ -221,6 +231,9 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
 
     h_data.z(idx) = residuals_[i]; 
   }
+  auto t2 = omp_get_wtime();
+  printf("calc %f ms\n", (t2-t1)*1000.);
+  //printf("---------\n");
   return true;
 }
 

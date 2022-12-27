@@ -292,6 +292,7 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
   int t = 0;
   State x_propagated = x_; // forward propagated state, paper (18) x^
   MatSS P_propagated = P_;
+  MatSS J = MatSS::Identity();
 
   for (int i = -1; i < maximum_iter_; i++)
   {
@@ -299,15 +300,20 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
     {
       continue;
     }
+    auto t0 = omp_get_wtime();
 
     VecS delta_x = x_.minus(x_propagated); // paper (18) x^k - x^
 
     auto& H = h_data.h;
     auto& z = h_data.z;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
-    K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
-    VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x;                    // paper (18) notice: J_inv = I
+    //K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
+    //VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x; // paper (18) notice: J_inv = I
 
+    MatSS Hessian = R_inv_ * H.transpose() * H  + P_.inverse();
+    MatSS Hessian_inv = Hessian.inverse();
+    VecS  gradient = R_inv_ * H.transpose() * z + P_.inverse() * delta_x;
+    VecS  dx = -Hessian_inv * gradient;
     x_ = x_.plus(dx); // update current state. paper (18)
 
     h_data.converge = true;
@@ -327,10 +333,12 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
     {
       h_data.converge = true;
     }
+    auto t1 = omp_get_wtime();
+    printf("delta: %f ms\n", (t1-t0)*1000.);
 
     if (t > 1 || i == maximum_iter_ - 1)
     {
-      P_ = (MatSS::Identity() - K * H) * P_; // paper (19)
+      P_ = Hessian_inv; // paper (19)
       return;
     }
   }

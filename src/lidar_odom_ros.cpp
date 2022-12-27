@@ -212,7 +212,10 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     }
 
     //  iterated state estimation
+    auto t0 = omp_get_wtime();
     kf_->iteratedUpdate(cloud_ds);
+    auto t1 = omp_get_wtime();
+    printf("iteratedUpdate: %f ms\n", (t1-t0)*1000.);
 
     //  add the feature points to map kdtree
     mapping_->updateMap(cloud_ds, state_);
