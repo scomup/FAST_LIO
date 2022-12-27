@@ -50,12 +50,7 @@
 #define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
 
-void pointL2W(PointType const *const pi, PointType *const po, const State &state);
-
-template <typename T>
-void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po, const State &state);
-
-float calc_dist(PointType p1, PointType p2);
+void cloudL2W(const PointCloud::Ptr& cloud_in, PointCloud::Ptr& cloud_out, const State &state);
 
 bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold);
 

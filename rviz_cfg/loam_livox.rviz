@@ -33,7 +33,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: currPoints
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -331,16 +331,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 73.17182159423828
+      Distance: 84.13643646240234
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -8.154257774353027
-        Y: -2.532411813735962
-        Z: -0.9718749523162842
+        X: 8.344083786010742
+        Y: -7.069709300994873
+        Z: -2.1760668754577637
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -349,7 +349,7 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: global
       Value: Orbit (rviz)
-      Yaw: 1.6063597202301025
+      Yaw: 1.5863597393035889
     Saved: ~
 Window Geometry:
   Displays:
@@ -367,5 +367,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1389
-  X: 338
-  Y: 307
+  X: 623
+  Y: 538

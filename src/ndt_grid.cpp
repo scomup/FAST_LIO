@@ -72,35 +72,33 @@ void NdtGrid<PointT>::updateCell(std::shared_ptr<Cell> &cell)
     // Normalize Eigen Val such that max no more than 100x min.
     eigensolver.compute(cov);
 
-    eigen_val = eigensolver.eigenvalues().asDiagonal();
-    eigen_vec = eigensolver.eigenvectors();
-
-    if (eigen_val(0, 0) < 0 || eigen_val(1, 1) < 0 || eigen_val(2, 2) <= 0)
+    Eigen::Vector3d val = eigensolver.eigenvalues().real();
+    Eigen::Matrix3d vec = eigensolver.eigenvectors();
+    if (val(0) < 0 || val(1) < 0 || val(2) <= 0)
     {
         cell.reset();
         return;
     }
 
     // Avoids matrices near singularities (eq 6.11)[Magnusson 2009]
-    min_covar_eigvalue = min_covar_eigvalue_mult_ * eigen_val(2, 2);
-    if (eigen_val(0, 0) < min_covar_eigvalue)
+    min_covar_eigvalue = min_covar_eigvalue_mult_ * val(2, 2);
+    if (val(0) < min_covar_eigvalue)
     {
-        eigen_val(0, 0) = min_covar_eigvalue;
+        val(0) = min_covar_eigvalue;
 
-        if (eigen_val(1, 1) < min_covar_eigvalue)
+        if (val(1) < min_covar_eigvalue)
         {
-            eigen_val(1, 1) = min_covar_eigvalue;
+            val(1) = min_covar_eigvalue;
         }
 
-        cov = eigen_vec * eigen_val * eigen_vec.inverse();
+        cov = vec * val.asDiagonal() * vec.inverse();
     }
 
     // cell->icov_ = cov.inverse();
 
-    Eigen::Vector3d norm = eigen_vec.col(0);
+    Eigen::Vector3d norm = vec.col(0);
     cell->norm_ = norm / norm.norm();
-    cell->type_ = 2 * eigen_val(0, 0) < eigen_val(1, 1) ? 1 : 0;
-    //printf("%f %f %f\n",eigen_val(0, 0),eigen_val(1, 1),eigen_val(2, 2));
+    cell->type_ = 2 * val(0) < val(1) ? 1 : 0;
 
     // if (cell->icov_.maxCoeff() == std::numeric_limits<float>::infinity() ||
     //     cell->icov_.minCoeff() == -std::numeric_limits<float>::infinity())

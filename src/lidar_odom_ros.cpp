@@ -271,13 +271,10 @@ void LidarOdomROS::pubOdom(const ros::Publisher &pub, const Esekf &kf, double ti
 void LidarOdomROS::pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time)
 {
   int size = cloud->points.size();
-  PointCloud::Ptr cloud_world(new PointCloud(size, 1));
+  PointCloud::Ptr cloud_world(new PointCloud());
   auto state = kf_->getState();
 
-  for (int i = 0; i < size; i++)
-  {
-    pointL2W(&cloud->points[i], &cloud_world->points[i], state);
-  }
+  cloudL2W(cloud, cloud_world, state);
 
   sensor_msgs::PointCloud2 cloud_msg;
   pcl::toROSMsg(*cloud_world, cloud_msg);

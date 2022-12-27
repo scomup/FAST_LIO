@@ -304,15 +304,15 @@ void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
 
     VecS delta_x = x_.minus(x_propagated); // paper (18) x^k - x^
 
-    auto& H = h_data.h;
-    auto& z = h_data.z;
+    auto& H1 = h_data.Hessian;
+    auto& g1 = h_data.gradient;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K;
     //K = (H.transpose() * H * R_inv_ + P_.inverse()).inverse() * H.transpose() * R_inv_; // paper (20)
     //VecS dx = -K * z - (MatSS::Identity() - K * H) * delta_x; // paper (18) notice: J_inv = I
 
-    MatSS Hessian = R_inv_ * H.transpose() * H  + P_.inverse();
+    MatSS Hessian = R_inv_ * H1  + P_.inverse();
     MatSS Hessian_inv = Hessian.inverse();
-    VecS  gradient = R_inv_ * H.transpose() * z + P_.inverse() * delta_x;
+    VecS  gradient = R_inv_ * g1 + P_.inverse() * delta_x;
     VecS  dx = -Hessian_inv * gradient;
     x_ = x_.plus(dx); // update current state. paper (18)
 

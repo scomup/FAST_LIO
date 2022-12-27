@@ -17,6 +17,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/distances.h>
+#include <pcl/common/transforms.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
@@ -25,7 +26,6 @@
 #include "preprocess.h"
 
 #include "mapping.h"
-
 
 bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold)
 {
@@ -60,22 +60,17 @@ bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point
   return true;
 }
 
-void pointL2W(PointType const *const pi, PointType *const po, const State &state)
-{
-  Vec3 p_lidar(pi->x, pi->y, pi->z);
-  Vec3 pw(state.rot * (state.Ril * p_lidar + state.til) + state.pos);
 
-  po->x = pw(0);
-  po->y = pw(1);
-  po->z = pw(2);
-  po->intensity = pi->intensity;
+
+void cloudL2W(const PointCloud::Ptr& cloud_in, PointCloud::Ptr& cloud_out, const State &state)
+{
+  Mat3 Rwl = state.rot * state.Ril;
+  Vec3 twl = state.rot * state.til + state.pos;
+  Eigen::Affine3d Twl = Eigen::Translation3d(twl) * Rwl;
+  pcl::transformPointCloud(*cloud_in, *cloud_out, Twl);
 }
 
-template <typename T>
-void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po,  const State &state)
-{
-  po = (state.rot * (state.Ril * pi + state.til) + state.pos);
-}
+
 
 Mapping::Mapping(bool extrinsic_est, double filter_size_map)
 {
@@ -83,7 +78,6 @@ Mapping::Mapping(bool extrinsic_est, double filter_size_map)
   filter_size_map_ = filter_size_map;
   grid_ = boost::make_shared<NdtGrid<PointType>>();
   grid_->setResolution(1);
-
 }
 
 void Mapping::updateMapArea(Vec3 &pose_lidar)
@@ -94,19 +88,17 @@ void Mapping::updateMapArea(Vec3 &pose_lidar)
 
 bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
 {
-  // initialize the map kdtree 
+  // initialize the map kdtree
   if (ikdtree_.Root_Node == nullptr)
   {
 
     int cloud_size = cloud->points.size();
     if (cloud_size > 5)
     {
-      PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
+      PointCloud::Ptr cloud_world(new PointCloud());
       ikdtree_.set_downsample_param(filter_size_map_);
-      for (int i = 0; i < cloud_size; i++)
-      {
-        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
-      }
+      cloudL2W(cloud, cloud_world, state);
+
       ikdtree_.Build(cloud_world->points);
       grid_->setInput(cloud_world);
       return true;
@@ -124,8 +116,8 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
   nearest_idx_.resize(cloud_size);
 
   std::vector<int> good_index;
-    int good = 0;
-    int all = 0;
+  int good = 0;
+  int all = 0;
 
   auto t0 = omp_get_wtime();
 
@@ -139,7 +131,7 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     point_world.x = pw(0);
     point_world.y = pw(1);
     point_world.z = pw(2);
-    //point_world.intensity = point.intensity;
+    // point_world.intensity = point.intensity;
 
     std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
     auto &points_near = neighbor_array_[i];
@@ -157,34 +149,30 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     }
     all++;
 
-    Vec4 plane;
-    if (true)
-    //if (calcPlane(plane, points_near, 0.1))
-    {
-      good++;
-      int idx = nearest_idx_[i];
-      if (idx == -1)
-        continue;
-      auto &cell = grid_->getCell(idx);
+    good++;
+    int idx = nearest_idx_[i];
+    if (idx == -1)
+      continue;
+    auto &cell = grid_->getCell(idx);
 
-      float r = cell->norm_.dot(pw - cell->mean_);; 
-      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
+    double r = cell->norm_.dot(pw - cell->mean_);
+    ;
+    double s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
 
-      if (s < 0.9) 
-        continue;
+    if (s < 0.9)
+      continue;
 
-      good_index.push_back(i);
-      norms_[i] = cell->norm_;
-      residuals_[i] = cell->norm_.dot(pw - cell->mean_);
-      //norms_[i] = plane.head<3>();
-      //residuals_[i] = r;
-    }
+    good_index.push_back(i);
+    norms_[i] = cell->norm_;
+    residuals_[i] = r;
+    // norms_[i] = plane.head<3>();
+    // residuals_[i] = r;
   }
   auto t1 = omp_get_wtime();
 
-  printf("init %f ms\n", (t1-t0)*1000.);
-  //printf("t2-t1 %f ms\n", (t2-t1)*1000.);
-  //printf("t3-t2 %f ms\n", (t3-t2)*1000.);
+  printf("init %f ms\n", (t1 - t0) * 1000.);
+  // printf("t2-t1 %f ms\n", (t2-t1)*1000.);
+  // printf("t3-t2 %f ms\n", (t3-t2)*1000.);
 
   if (good_index.size() < 1)
   {
@@ -198,11 +186,17 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     return false;
   }
 
-  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
-  h_data.z.resize(good_index.size());
+  // h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
+  // h_data.z.resize(good_index.size());
+  h_data.gradient.setZero();
+  h_data.Hessian.setZero();
+
+  auto h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
 
   for (int idx = 0; idx < good_index.size(); idx++)
   {
+    Eigen::MatrixXd h = Eigen::MatrixXd::Zero(1, SZ);
+
     int i = good_index[idx];
 
     Vec3 point = cloud->points[i].getVector3fMap().template cast<double>(); // point in lidar frame
@@ -211,29 +205,29 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
 
     Vec3 point_i = state.Ril * point + state.til; // point in imu frame
     Mat3 point_i_skew = skewSymMat(point_i);
-    Vec3& n = norms_[i];
+    Vec3 &n = norms_[i];
 
     Vec3 C(state.rot.transpose() * n);
     Vec3 A(point_i_skew * C);
     if (extrinsic_est_)
     {
       Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
-      h_data.h.block<1, 3>(idx, L_Rli) = B;
-      h_data.h.block<1, 3>(idx, L_Tli) = C;
+      h.block<1, 3>(0, L_P) = n;
+      h.block<1, 3>(0, L_R) = A;
+      h.block<1, 3>(0, L_Rli) = B;
+      h.block<1, 3>(0, L_Tli) = C;
     }
     else
     {
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
+      h.block<1, 3>(0, L_P) = n;
+      h.block<1, 3>(0, L_R) = A;
     }
-
-    h_data.z(idx) = residuals_[i]; 
+    h_data.Hessian += h.transpose() * h;
+    h_data.gradient += h.transpose() * residuals_[i];
   }
   auto t2 = omp_get_wtime();
-  printf("calc %f ms\n", (t2-t1)*1000.);
-  //printf("---------\n");
+  printf("calc %f ms\n", (t2 - t1) * 1000.);
+  // printf("---------\n");
   return true;
 }
 
@@ -244,114 +238,64 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
 
 void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
 {
-  //auto t0 = omp_get_wtime();
-
-  PointVector new_points;
-  PointVector new_points_ds;
-  int cloud_size = cloud->points.size();
-
-  PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
-  PointCloud::Ptr cloud_world_new(new PointCloud(cloud_size, 1));
-
-  for (int i = 0; i < cloud_size; i++)
-  {
-    /* transform to world frame */
-    pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
-    /* decide if need add to map */
-    if (!neighbor_array_[i].empty())
-    {
-      const PointVector &neighbors = neighbor_array_[i];
-      bool need_add = true;
-      BoxPointType Box_of_Point;
-      PointType downsample_result, mid_point;
-      mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      float dist = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
-      if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
-      {
-        new_points_ds.push_back(cloud_world->points[i]);
-        cloud_world_new->push_back(cloud_world->points[i]);
-        continue;
-      }
-      for (int j = 0; j < neighbors.size(); j++)
-      {
-        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist)
-        {
-          need_add = false;
-          break;
-        }
-      }
-      if (need_add){
-        new_points.push_back(cloud_world->points[i]);
-        cloud_world_new->push_back(cloud_world->points[i]);
-      }
-    }
-    else
-    {
-      new_points.push_back(cloud_world->points[i]);
-    }
-  }
-
-  //auto t1 = omp_get_wtime();
-  ikdtree_.Add_Points(new_points, true);
-  ikdtree_.Add_Points(new_points_ds, false);
-  //auto t2 = omp_get_wtime();
+  // auto t0 = omp_get_wtime();
+  PointCloud::Ptr cloud_world(new PointCloud());
+  cloudL2W(cloud, cloud_world, state);
+  // auto t1 = omp_get_wtime();
+  //ikdtree_.Add_Points(new_points, true);
+  //ikdtree_.Add_Points(new_points_ds, false);
+  // auto t2 = omp_get_wtime();
 
   grid_->update(cloud_world);
-  //auto t3 = omp_get_wtime();
-  //printf("t1-t0 %f ms\n", (t1-t0)*1000.);
-  //printf("t2-t1 %f ms\n", (t2-t1)*1000.);
-  //printf("t3-t2 %f ms\n", (t3-t2)*1000.);
-
+  // auto t3 = omp_get_wtime();
+  // printf("t1-t0 %f ms\n", (t1-t0)*1000.);
+  // printf("t2-t1 %f ms\n", (t2-t1)*1000.);
+  // printf("t3-t2 %f ms\n", (t3-t2)*1000.);
 }
 
 visualization_msgs::MarkerArray Mapping::makeMarkerArray()
 {
-    auto cells = grid_->getCells();
-    visualization_msgs::MarkerArray marker_array;
-    int id = 0;
-    for (uint i = 0; i < cells.size(); i++)
-    {
-        auto& cell = cells[i];
-        if(cell == nullptr)
-            continue;
-        
-        visualization_msgs::Marker marker;
-        marker.header.frame_id = "/map";
-        marker.header.stamp = ros::Time::now();
-        marker.ns = "basic_shapes" + std::to_string(id);
-        marker.id = id++;
-        marker.type = visualization_msgs::Marker::LINE_LIST;
-        marker.action = visualization_msgs::Marker::ADD;
-        marker.lifetime = ros::Duration();
+  auto cells = grid_->getCells();
+  visualization_msgs::MarkerArray marker_array;
+  int id = 0;
+  for (uint i = 0; i < cells.size(); i++)
+  {
+    auto &cell = cells[i];
+    if (cell == nullptr)
+      continue;
 
-        geometry_msgs::Point pointA, pointB;
-        pointA.x = cell->mean_.x();
-        pointA.y = cell->mean_.y();
-        pointA.z = cell->mean_.z();
-        pointB.x = pointA.x + cell->norm_.x() / 1.;
-        pointB.y = pointA.y + cell->norm_.y() / 1.;
-        pointB.z = pointA.z + cell->norm_.z() / 1.;
-        marker.pose.orientation.x = 0;
-        marker.pose.orientation.y = 0;
-        marker.pose.orientation.z = 0;
-        marker.pose.orientation.w = 1;
-        marker.scale.x = 0.01;
-        //marker.scale.y = sqrt(svd.singularValues().y()) * 3;
-        //marker.scale.z = sqrt(svd.singularValues().z()) * 3;
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "/map";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "basic_shapes" + std::to_string(id);
+    marker.id = id++;
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.lifetime = ros::Duration();
 
-        marker.color.r = 0;
-        marker.color.g = 1;
-        marker.color.b = 0;
-        marker.color.a = 1;
-        marker.points.push_back(pointA);
-        marker.points.push_back(pointB);
+    geometry_msgs::Point pointA, pointB;
+    pointA.x = cell->mean_.x();
+    pointA.y = cell->mean_.y();
+    pointA.z = cell->mean_.z();
+    pointB.x = pointA.x + cell->norm_.x() / 1.;
+    pointB.y = pointA.y + cell->norm_.y() / 1.;
+    pointB.z = pointA.z + cell->norm_.z() / 1.;
+    marker.pose.orientation.x = 0;
+    marker.pose.orientation.y = 0;
+    marker.pose.orientation.z = 0;
+    marker.pose.orientation.w = 1;
+    marker.scale.x = 0.01;
+    // marker.scale.y = sqrt(svd.singularValues().y()) * 3;
+    // marker.scale.z = sqrt(svd.singularValues().z()) * 3;
 
+    marker.color.r = 0;
+    marker.color.g = 1;
+    marker.color.b = 0;
+    marker.color.a = 1;
+    marker.points.push_back(pointA);
+    marker.points.push_back(pointB);
 
-        marker_array.markers.push_back(marker);
-    }
-    return marker_array;
+    marker_array.markers.push_back(marker);
+  }
+  return marker_array;
 }
-
-
