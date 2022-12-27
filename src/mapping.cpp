@@ -89,7 +89,7 @@ void Mapping::updateMapArea(Vec3 &pose_lidar)
   return;
 }
 
-bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
+bool Mapping::initMap(const CloudPtr &cloud, const State &state)
 {
   // initialize the map kdtree 
   if (ikdtree_.Root_Node == nullptr)
@@ -98,7 +98,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
     int cloud_size = cloud->points.size();
     if (cloud_size > 5)
     {
-      PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
+      CloudPtr cloud_world(new Cloud(cloud_size, 1));
       ikdtree_.set_downsample_param(filter_size_map_);
       for (int i = 0; i < cloud_size; i++)
       {
@@ -111,7 +111,7 @@ bool Mapping::initMap(const PointCloud::Ptr &cloud, const State &state)
   return false;
 }
 
-bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &cloud)
+bool Mapping::point2PlaneModel(HData &h_data, State &state, CloudPtr &cloud)
 {
   int cloud_size = cloud->points.size();
   norms_.resize(cloud_size);
@@ -207,13 +207,13 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
   return true;
 }
 
-void Mapping::updateMap(PointCloud::Ptr cloud, const State &state)
+void Mapping::updateMap(CloudPtr cloud, const State &state)
 {
   PointVector new_points;
   PointVector new_points_ds;
   int cloud_size = cloud->points.size();
 
-  PointCloud::Ptr cloud_world(new PointCloud(cloud_size, 1));
+  CloudPtr cloud_world(new Cloud(cloud_size, 1));
 
   for (int i = 0; i < cloud_size; i++)
   {

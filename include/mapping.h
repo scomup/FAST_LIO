@@ -45,9 +45,6 @@
 #include "esekf.h"
 #include "ikd_Tree.h"
 
-#define MAXN (720000)
-#define PUBFRAME_PERIOD (20)
-
 void pointL2W(PointType const *const pi, PointType *const po, const State &state);
 
 template <typename T>
@@ -64,11 +61,11 @@ public:
   
   void updateMapArea(Vec3 &pose_lidar);
 
-  bool initMap(const PointCloud::Ptr &cloud, const State &state);
+  bool initMap(const CloudPtr &cloud, const State &state);
 
-  bool point2PlaneModel(HData &ekfom_data, State &state, PointCloud::Ptr &cloud);
+  bool point2PlaneModel(HData &ekfom_data, State &state, CloudPtr &cloud);
 
-  void updateMap(PointCloud::Ptr cloud, const State &state);
+  void updateMap(CloudPtr cloud, const State &state);
 
 
 private:

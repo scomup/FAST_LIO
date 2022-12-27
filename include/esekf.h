@@ -1,5 +1,4 @@
-#ifndef ESEKFOM_EKF_HPP1
-#define ESEKFOM_EKF_HPP1
+#pragma once
 
 #include <vector>
 #include <cstdlib>
@@ -17,7 +16,7 @@ MatNN processNoiseCov();
 class Esekf
 {
 public:
-  using HFunc = std::function<bool (HData &, State &, PointCloud::Ptr &)>;
+  using HFunc = std::function<bool (HData &, State &, CloudPtr &)>;
 
   Esekf(const double R, const int maximum_iter, const HFunc h_model);
 
@@ -33,7 +32,7 @@ public:
   void predict(double &dt, MatNN &Q, const InputU &i_in);
 
   // update
-  void iteratedUpdate(PointCloud::Ptr &cloud_ds);
+  void iteratedUpdate(CloudPtr &cloud_ds);
 
   void setExtrinsic(const Vec3 &transl, const Mat3 &rot);
 
@@ -45,7 +44,7 @@ public:
 
   void setAccBiasCov(const Vec3 &b_a);
 
-  void propagation(const SensorData &sensor_data, PointCloud::Ptr &pcl_un);
+  void propagation(const SensorData &sensor_data, CloudPtr &pcl_un);
 
 
 private:
@@ -57,7 +56,7 @@ private:
 
   bool initImu(const SensorData &sensor_data);
 
-  void undistortCloud(const SensorData &sensor_data, PointCloud &pcl_in_out);
+  void undistortCloud(const SensorData &sensor_data, Cloud &pcl_in_out);
 
   Vec3 cov_acc_;
   Vec3 cov_gyr_;
@@ -67,11 +66,11 @@ private:
   Vec3 mean_gyr_;
 
 
-  PointCloud::Ptr cur_pcl_un_;
+  CloudPtr cur_pcl_un_;
 
   sensor_msgs::ImuConstPtr last_imu_;
 
-  std::vector<BPInfo> imu_pose_;
+  std::vector<IMUPose> imu_pose_;
 
   Mat3 Ril_;
   Vec3 til_;
@@ -90,5 +89,3 @@ private:
   const HFunc h_model_;
   const double epsi_ = 0.001;
 };
-
-#endif //  ESEKFOM_EKF_HPP1

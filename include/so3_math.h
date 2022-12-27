@@ -1,10 +1,7 @@
-#ifndef SO3_MATH_HPP
-#define SO3_MATH_HPP
+#pragma once
 
 #include <Eigen/Core>
 #include <math.h>
-
-#define SKEW_SYM_MATRX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
 
 static Eigen::Matrix3d skewSymMat(const Eigen::Vector3d &v)
 {
@@ -25,7 +22,7 @@ static Eigen::Matrix3d SO3Expmap(const Eigen::Vector3d &ang_vel, const double &d
     Eigen::Vector3d r_axis = ang_vel / ang_vel_norm;
     Eigen::Matrix3d K;
 
-    K << SKEW_SYM_MATRX(r_axis);
+    K = skewSymMat(r_axis);
 
     double r_ang = ang_vel_norm * dt;
 
@@ -60,5 +57,3 @@ static Eigen::Vector3d SO3Logmap(const Eigen::Matrix3d &R)
   Eigen::Vector3d r(R(2, 1) - R(1, 2), R(0, 2) - R(2, 0), R(1, 0) - R(0, 1));
   return fabs(theta) < 0.001 ? (0.5 * r) : (0.5 * theta / sin(theta) * r);
 }
-
-#endif // SO3_MATH_HPP

@@ -4,7 +4,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 
-#include "common_lib.h"
+#include "common.h"
 
 
 enum TIME_UNIT
@@ -38,9 +38,9 @@ public:
   Preprocess(double blind, int time_unit, int point_filter_num);
   ~Preprocess();
 
-  void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &pcl_out);
+  void process(const sensor_msgs::PointCloud2::ConstPtr &msg, CloudPtr &pcl_out);
 
-  PointCloud cloud_; // cloud in lidar frame.
+  Cloud cloud_; // cloud in lidar frame.
   int point_filter_num_, time_unit_;
   double blind_;
   double time_unit_scale_;

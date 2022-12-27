@@ -2,8 +2,7 @@
 #include "so3_math.h"
 #include "esekf.h"
 #include "state.h"
-
-#define MAX_INI_COUNT (10)
+#include <ros/assert.h>
 
 Esekf::Esekf(const double R, const int maximum_iter, const HFunc h_model)
     : R_inv_(1. / R),
@@ -122,11 +121,11 @@ bool Esekf::initImu(const SensorData &sensor_data)
     init_imu_num_++;
   }
 
-  if (init_imu_num_ > MAX_INI_COUNT)
+  if (init_imu_num_ > INIT_IMU_NUM)
   {
     mean_acc_ /= init_imu_num_;
     mean_gyr_ /= init_imu_num_;
-    x_.grav = -mean_acc_ / mean_acc_.norm() * Gravity_;
+    x_.grav = -mean_acc_ / mean_acc_.norm() * GRAVITY;
     x_.bg = mean_gyr_;
     x_.til = til_;
     x_.Ril = Eigen::Quaterniond(Ril_);
@@ -149,20 +148,20 @@ bool Esekf::initImu(const SensorData &sensor_data)
   return false;
 }
 
-void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
+void Esekf::undistortCloud(const SensorData &sensor_data, Cloud &cloud)
 {
   // add the imu of the last frame-tail to the of current frame-head
   auto imus = sensor_data.imu;
   imus.push_front(last_imu_);
   const double &imu_end_time = imus.back()->header.stamp.toSec();
-  const double &cloud_end_time = sensor_data.lidar_stamp;
+  const double &cloud_end_time = sensor_data.stamp;
 
   // sort point clouds by offset time
-  cloud = *(sensor_data.lidar);
+  cloud = *(sensor_data.cloud);
 
   // Initialize IMU pose
   imu_pose_.clear();
-  imu_pose_.push_back(BPInfo(0.0, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
+  imu_pose_.push_back(IMUPose(0.0, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
 
   double dt = 0;
 
@@ -202,7 +201,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
     acc_last_ += x_.grav;
 
     double &&offset_time = tail->header.stamp.toSec() - cloud_end_time;
-    imu_pose_.push_back(BPInfo(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
+    imu_pose_.push_back(IMUPose(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
   }
 
   // calculated the pos and attitude prediction at the frame-end
@@ -254,7 +253,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, PointCloud &cloud)
   }
 }
 
-void Esekf::propagation(const SensorData &sensor_data, PointCloud::Ptr &cur_pcl_un)
+void Esekf::propagation(const SensorData &sensor_data, CloudPtr &cloud_deskew)
 {
   if (sensor_data.imu.empty())
   {
@@ -270,8 +269,8 @@ void Esekf::propagation(const SensorData &sensor_data, PointCloud::Ptr &cur_pcl_
     return;
   }
 
-  ROS_ASSERT(sensor_data.lidar != nullptr);
-  undistortCloud(sensor_data, *cur_pcl_un);
+  ROS_ASSERT(sensor_data.cloud != nullptr);
+  undistortCloud(sensor_data, *cloud_deskew);
 }
 
 // Forward Propagation  III-C
@@ -285,7 +284,7 @@ void Esekf::predict(double &dt, MatNN &Q, const InputU &u)
 }
 
 // ESKF
-void Esekf::iteratedUpdate(PointCloud::Ptr &cloud_ds)
+void Esekf::iteratedUpdate(CloudPtr &cloud_ds)
 {
   HData h_data;
   h_data.converge = true;

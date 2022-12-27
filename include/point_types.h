@@ -1,6 +1,4 @@
-
-#ifndef __VELODYNE_POINTCLOUD_POINT_TYPES_H
-#define __VELODYNE_POINTCLOUD_POINT_TYPES_H
+#pragma once
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -20,6 +18,4 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIT,
                                   (float, intensity, intensity)
                                   (float, time, time));
 
-
-#endif
 

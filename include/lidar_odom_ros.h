@@ -23,7 +23,7 @@ public:
 private:
   void pubOdom(const ros::Publisher &pub, const Esekf &kf, double time);
 
-  void pubCloud(const ros::Publisher &pub_cloud, PointCloud::Ptr &cloud, double time);
+  void pubCloud(const ros::Publisher &pub_cloud, CloudPtr &cloud, double time);
 
 
   template <typename T> void setOdomMsg(T &out);

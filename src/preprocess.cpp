@@ -10,7 +10,7 @@ Preprocess::Preprocess(double blind, int time_unit, int point_filter_num)
 
 Preprocess::~Preprocess() {}
 
-void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloud::Ptr &cloud_out)
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, CloudPtr &cloud_out)
 {
   switch (time_unit_)
   {

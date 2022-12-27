@@ -1,5 +1,3 @@
-#define PCL_NO_PRECOMPILE
-
 #include "lidar_odom_ros.h"
 
 int main(int argc, char **argv)
