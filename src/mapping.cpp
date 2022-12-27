@@ -167,11 +167,13 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
     return false;
   }
 
-  h_data.h = Eigen::MatrixXd::Zero(good_index.size(), SZ);
-  h_data.z.resize(good_index.size());
+  h_data.gradient.setZero();
+  h_data.Hessian.setZero();
 
   for (int idx = 0; idx < good_index.size(); idx++)
   {
+    VecS h = VecS::Zero();
+
     int i = good_index[idx];
 
     Vec3 point = cloud->points[i].getVector3fMap().template cast<double>(); // point in lidar frame
@@ -188,18 +190,19 @@ bool Mapping::point2PlaneModel(HData &h_data, State &state, PointCloud::Ptr &clo
     if (extrinsic_est_)
     {
       Vec3 B(point_skew * state.Ril.transpose() * C);
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
-      h_data.h.block<1, 3>(idx, L_Rli) = B;
-      h_data.h.block<1, 3>(idx, L_Tli) = C;
+      h.segment<3>(L_P) = n;
+      h.segment<3>(L_R) = A;
+      h.segment<3>(L_Rli) = B;
+      h.segment<3>(L_Tli) = C;
     }
     else
     {
-      h_data.h.block<1, 3>(idx, L_P) = n;
-      h_data.h.block<1, 3>(idx, L_R) = A;
+      h.segment<3>(L_P) = n;
+      h.segment<3>(L_R) = A;
     }
 
-    h_data.z(idx) = residuals_[i];
+    h_data.Hessian += h * h.transpose();
+    h_data.gradient += h.transpose() * residuals_[i];
   }
   return true;
 }

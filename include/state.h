@@ -3,12 +3,6 @@
 #include "so3_math.h"
 #include "common_lib.h"
 
-struct HData
-{
-  bool converge;
-  Eigen::Matrix<double, Eigen::Dynamic, 1> z;              // residual
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h; // jacobian H
-};
 
 // the location of state
 constexpr int SZ = 24; // state size
@@ -32,6 +26,15 @@ using MatSS = Eigen::Matrix<double, SZ, SZ>; // 24X24 Cov Mat
 using MatSN = Eigen::Matrix<double, SZ, NZ>; // 24X12 Cov Mat
 using MatNN = Eigen::Matrix<double, NZ, NZ>; // 12X12 Cov Mat
 using VecS = Eigen::Matrix<double, SZ, 1>;   // 24X1 Vec
+
+struct HData
+{
+  bool converge;
+  //Eigen::Matrix<double, Eigen::Dynamic, 1> z;              // residual
+  //Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h; // jacobian H
+  MatSS Hessian;
+  VecS gradient;
+};
 
 // Input u (IMU)
 struct InputU
@@ -85,11 +88,11 @@ struct State
 struct BPInfo
 {
   double offset_time;
-  Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
-  Mat3 rot = Mat3::Identity(); // imu rotation in world frame
-  Vec3 vel = Vec3(0, 0, 0);
   Vec3 acc = Vec3(0, 0, 0);
   Vec3 gyr = Vec3(0, 0, 0);
+  Vec3 vel = Vec3(0, 0, 0);
+  Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
+  Mat3 rot = Mat3::Identity(); // imu rotation in world frame
 
   BPInfo(const double t,
          const Vec3 &a,
