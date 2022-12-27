@@ -121,6 +121,7 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
   norms_.resize(cloud_size);
   residuals_.resize(cloud_size);
   neighbor_array_.resize(cloud_size);
+  nearest_idx_.resize(cloud_size);
 
   std::vector<int> good_index;
 
@@ -140,6 +141,9 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
     auto &points_near = neighbor_array_[i];
     if (h_data.converge)
     {
+      int idx = grid_->getNearest(point_world);
+      nearest_idx_[i] = idx;
+
       ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
 
       if(points_near.size() < NUM_MATCH_POINTS)
@@ -152,19 +156,20 @@ bool Mapping::H2Model(HData &h_data, State &state, PointCloud::Ptr &cloud)
 
     if (calcPlane(plane, points_near, 0.1))
     {
-      float r = plane(0) * point_world.x + plane(1) * point_world.y + plane(2) * point_world.z + plane(3); 
-      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
-
-      if (s < 0.9) 
-        continue;
-      int idx = grid_->getNearest(point_world);
+      int idx = nearest_idx_[i];
       if (idx == -1)
         continue;
       auto &cell = grid_->getCell(idx);
 
+      float r = cell->norm_.dot(pw - cell->mean_);; 
+      float s = 1 - 0.9 * fabs(r) / sqrt(pl.norm());
+
+      if (s < 0.9) 
+        continue;
+
       good_index.push_back(i);
       norms_[i] = cell->norm_;
-      residuals_[i] = cell->norm_.dot(pw-cell->mean_);
+      residuals_[i] = cell->norm_.dot(pw - cell->mean_);
       //norms_[i] = plane.head<3>();
       //residuals_[i] = r;
       

@@ -20,6 +20,7 @@ public:
 		sum_ .setZero();
 		ppt_.setIdentity();
 		update_ = false;
+		type_ = 0;
 	}
 
 	Eigen::Vector3d mean_;
@@ -30,6 +31,7 @@ public:
 	Eigen::Matrix3d ppt_;
     int num_;
 	bool update_;
+	int type_;
 };
 
 

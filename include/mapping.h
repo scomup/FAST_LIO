@@ -88,5 +88,6 @@ private:
 
   std::vector<Vec3> norms_;
   std::vector<double> residuals_;
+  std::vector<int> nearest_idx_;
 
 };

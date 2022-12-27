@@ -99,6 +99,7 @@ void NdtGrid<PointT>::updateCell(std::shared_ptr<Cell> &cell)
 
     Eigen::Vector3d norm = eigen_vec.col(0);
     cell->norm_ = norm / norm.norm();
+    cell->type_ = 2 * eigen_val(0, 0) < eigen_val(1, 1) ? 1 : 0;
 
     // if (cell->icov_.maxCoeff() == std::numeric_limits<float>::infinity() ||
     //     cell->icov_.minCoeff() == -std::numeric_limits<float>::infinity())
