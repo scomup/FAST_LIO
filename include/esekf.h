@@ -1,13 +1,5 @@
 #pragma once
 
-#include <vector>
-#include <cstdlib>
-#include <Eigen/Core>
-#include <Eigen/Geometry>
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
-#include <mutex>
-
 #include "state.h"
 
 MatNN processNoiseCov();
@@ -29,7 +21,7 @@ public:
   void setP(const MatSS &input_cov);
 
   // Forward Propagation  III-C
-  void predict(double &dt, MatNN &Q, const InputU &i_in);
+  void propagation(double &dt, MatNN &Q, const InputU &i_in);
 
   // update
   void iteratedUpdate(CloudPtr &cloud_ds);
@@ -44,8 +36,9 @@ public:
 
   void setAccBiasCov(const Vec3 &b_a);
 
-  void propagation(const SensorData &sensor_data, CloudPtr &pcl_un);
+  void predict(const SensorData &sensor_data);
 
+  void undistortCloud(const SensorData &sensor_data, CloudPtr &pcl_in_out);
 
 private:
   VecS f_func(const State &state, const InputU &u, double dt) const;
@@ -56,7 +49,6 @@ private:
 
   bool initImu(const SensorData &sensor_data);
 
-  void undistortCloud(const SensorData &sensor_data, Cloud &pcl_in_out);
 
   Vec3 cov_acc_;
   Vec3 cov_gyr_;

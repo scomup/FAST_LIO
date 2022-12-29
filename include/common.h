@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <Eigen/Eigen>
 #include <sensor_msgs/Imu.h>
 #include "point_types.h"

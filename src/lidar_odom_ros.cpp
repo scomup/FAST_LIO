@@ -3,6 +3,9 @@
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_broadcaster.h>
 #include "lidar_odom_ros.h"
+#include <pcl/common/transforms.h>
+#include <pcl_conversions/pcl_conversions.h>
+
 
 
 template <typename T>
@@ -30,7 +33,6 @@ LidarOdomROS::LidarOdomROS()
   std::vector<double> extrin_rot = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
   double blind;
-  int time_unit;
   int point_filter_num;
 
   nh_.param<bool>("publish/scan_publish_en", scan_pub_, true);
@@ -41,15 +43,14 @@ LidarOdomROS::LidarOdomROS()
   nh_.param<double>("mapping_/acc_cov", acc_cov, 0.1);
   nh_.param<double>("mapping_/b_gyr_cov", b_gyr_cov, 0.0001);
   nh_.param<double>("mapping_/b_acc_cov", b_acc_cov, 0.0001);
-  nh_.param<double>("preprocess/blind", blind, 0.01);
-  nh_.param<int>("preprocess/timestamp_unit", time_unit, US);
+  nh_.param<double>("blind", blind, 2);
   nh_.param<int>("point_filter_num", point_filter_num, 2);
   nh_.param<bool>("mapping_/extrinsic_est_en", extrinsic_est, false);
   nh_.param<std::vector<double>>("mapping_/extrinsic_T", extrin_trans, std::vector<double>());
   nh_.param<std::vector<double>>("mapping_/extrinsic_R", extrin_rot, std::vector<double>());
 
 
-  p_pre_ = boost::make_shared<Preprocess>(blind, time_unit, point_filter_num);;
+  scan_process_ = boost::make_shared<ScanProcess>(blind, point_filter_num);;
   mapping_ = boost::make_shared<Mapping>(extrinsic_est, filter_size_map);
   auto h_model = [this](HData &ekfom_data,
                             State &x,
@@ -88,7 +89,7 @@ void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
   }
 
   CloudPtr ptr(new Cloud());
-  p_pre_->process(msg, ptr);
+  scan_process_->process(msg, ptr);
   std::lock_guard<std::mutex> lock(mtx_);
   lidar_q_.push_back({ptr,msg->header.stamp.toSec()});
   last_timestamp_lidar_ = msg->header.stamp.toSec();
@@ -165,7 +166,9 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     CloudPtr cloud_deskew(new Cloud());
 
     // imu forward propagation, and deskew lidar points. 
-    kf_->propagation(sensor_data, cloud_deskew); 
+    kf_->predict(sensor_data); 
+
+    kf_->undistortCloud(sensor_data, cloud_deskew); 
 
     /*
     CloudPtr cloud_deskew_cmp(new Cloud());
@@ -188,7 +191,7 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     }
 
     // Segment the map in lidar FOV
-    state_ = kf_->getState();
+    //state_ = kf_->getState();
     // Vec3 pose_lidar = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
     // updateMapArea(pose_lidar);
 
@@ -197,7 +200,7 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     downsampe_filter_.setInputCloud(cloud_deskew);
     downsampe_filter_.filter(*cloud_ds);
 
-    if (mapping_->initMap(cloud_ds, state_))
+    if (mapping_->initMap(cloud_ds, kf_->getState()))
     {
       return;
     }
@@ -215,7 +218,7 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
     kf_->iteratedUpdate(cloud_ds);
 
     //  add the feature points to map kdtree
-    mapping_->updateMap(cloud_ds, state_);
+    mapping_->updateMap(cloud_ds, kf_->getState());
 
     //  Publish odometry
     pubOdom(pub_odom_, *kf_, lidar_end_time_);
@@ -265,14 +268,9 @@ void LidarOdomROS::pubOdom(const ros::Publisher &pub, const Esekf &kf, double ti
 
 void LidarOdomROS::pubCloud(const ros::Publisher &pub_cloud, CloudPtr &cloud, double time)
 {
-  int size = cloud->points.size();
-  CloudPtr cloud_world(new Cloud(size, 1));
+  CloudPtr cloud_world(new Cloud());
   auto state = kf_->getState();
-
-  for (int i = 0; i < size; i++)
-  {
-    pointL2W(&cloud->points[i], &cloud_world->points[i], state);
-  }
+  pcl::transformPointCloud(*cloud, *cloud_world, state.getTwl());
 
   sensor_msgs::PointCloud2 cloud_msg;
   pcl::toROSMsg(*cloud_world, cloud_msg);

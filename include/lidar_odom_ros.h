@@ -1,14 +1,15 @@
 #pragma once
 
-#include "mapping.h"
-#include "preprocess.h"
-#include <algorithm>
+#include <mutex>
+#include <ros/ros.h>
+
 #include "state.h"
+#include "scan_process.h"
+#include "mapping.h"
 
 
 class LidarOdomROS
 {
-
 public:
   LidarOdomROS();
 
@@ -25,11 +26,11 @@ private:
 
   void pubCloud(const ros::Publisher &pub_cloud, CloudPtr &cloud, double time);
 
-
   template <typename T> void setOdomMsg(T &out);
 
-  std::mutex mtx_;
   ros::NodeHandle nh_;
+
+  std::mutex mtx_;
   double last_timestamp_lidar_ = 0;
   double newest_imu_stamp_ = -1.0;
   double lidar_end_time_ = 0;
@@ -37,7 +38,7 @@ private:
   std::deque<LidarData> lidar_q_;
   std::deque<sensor_msgs::Imu::ConstPtr> imu_q_;
   bool scan_pub_ = false;
-  boost::shared_ptr<Preprocess> p_pre_;
+  boost::shared_ptr<ScanProcess> scan_process_;
   boost::shared_ptr<Esekf> kf_;
   boost::shared_ptr<Mapping> mapping_;
   ros::Subscriber sub_pcl_;

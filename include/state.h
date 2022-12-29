@@ -3,7 +3,6 @@
 #include "so3_math.h"
 #include "common.h"
 
-
 struct State
 {
   Vec3 pos = Vec3(0, 0, 0);    // imu postion in world frame
@@ -19,14 +18,14 @@ struct State
   State plus(VecS &f) const
   {
     State r;
-    r.pos = this->pos + f.segment<3>(L_P);
-    r.rot = this->rot * SO3Expmap(f.segment<3>(L_R));
-    r.Ril = this->Ril * SO3Expmap(f.segment<3>(L_Rli));
-    r.til = this->til + f.segment<3>(L_Tli);
-    r.vel = this->vel + f.segment<3>(L_V);
-    r.bg = this->bg + f.segment<3>(L_Bw);
-    r.ba = this->ba + f.segment<3>(L_Ba);
-    r.grav = this->grav + f.segment<3>(L_G);
+    r.pos = pos + f.segment<3>(L_P);
+    r.rot = rot * SO3Expmap(f.segment<3>(L_R));
+    r.Ril = Ril * SO3Expmap(f.segment<3>(L_Rli));
+    r.til = til + f.segment<3>(L_Tli);
+    r.vel = vel + f.segment<3>(L_V);
+    r.bg = bg + f.segment<3>(L_Bw);
+    r.ba = ba + f.segment<3>(L_Ba);
+    r.grav = grav + f.segment<3>(L_G);
     return r;
   }
 
@@ -34,16 +33,21 @@ struct State
   VecS minus(const State &x2) const
   {
     VecS r;
-    r.segment<3>(L_P) = this->pos - x2.pos;
-    r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * this->rot);
-    r.segment<3>(L_Rli) = SO3Logmap(x2.Ril.transpose() * this->Ril);
-    r.segment<3>(L_Tli) = this->til - x2.til;
-    r.segment<3>(L_V) = this->vel - x2.vel;
-    r.segment<3>(L_Bw) = this->bg - x2.bg;
-    r.segment<3>(L_Ba) = this->ba - x2.ba;
-    r.segment<3>(L_G) = this->grav - x2.grav;
+    r.segment<3>(L_P) = pos - x2.pos;
+    r.segment<3>(L_R) = SO3Logmap(x2.rot.transpose() * rot);
+    r.segment<3>(L_Rli) = SO3Logmap(x2.Ril.transpose() * Ril);
+    r.segment<3>(L_Tli) = til - x2.til;
+    r.segment<3>(L_V) = vel - x2.vel;
+    r.segment<3>(L_Bw) = bg - x2.bg;
+    r.segment<3>(L_Ba) = ba - x2.ba;
+    r.segment<3>(L_G) = grav - x2.grav;
     return r;
   }
+  Eigen::Affine3d getTwl() const
+  {
+    Mat3 Rwl = rot * Ril;
+    Vec3 twl = rot * til + pos;
+    Eigen::Affine3d Twl = Eigen::Translation3d(twl) * Rwl;
+    return Twl;
+  }
 };
-
-

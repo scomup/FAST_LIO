@@ -36,23 +36,12 @@
 
 #pragma once
 
-
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+
 #include "state.h"
 #include "esekf.h"
 #include "ikd_Tree.h"
 
-void pointL2W(PointType const *const pi, PointType *const po, const State &state);
-
-template <typename T>
-void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po, const State &state);
-
-float calc_dist(PointType p1, PointType p2);
-
-bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point, const double threshold);
 
 class Mapping
 {

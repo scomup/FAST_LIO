@@ -80,7 +80,7 @@ add_executable(fastlio_mapping
   src/mapping.cpp
   src/esekf.cpp 
   src/ikd_Tree.cpp 
-  src/preprocess.cpp
+  src/scan_process.cpp
   src/lidar_odom_ros.cpp
   )
   

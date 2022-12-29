@@ -2,7 +2,7 @@ common:
     lid_topic:  "/velodyne_points"
     imu_topic:  "/imu/data"
 
-preprocess:
+scan_process:
     lidar_type: 2                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
     scan_line: 32
     scan_rate: 10                # only need to be set for velodyne, unit: Hz,

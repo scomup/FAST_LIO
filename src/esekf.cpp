@@ -1,8 +1,9 @@
+#include <ros/assert.h>
+
 #include "ikd_Tree.h"
 #include "so3_math.h"
 #include "esekf.h"
 #include "state.h"
-#include <ros/assert.h>
 
 Esekf::Esekf(const double R, const int maximum_iter, const HFunc h_model)
     : R_inv_(1. / R),
@@ -148,74 +149,19 @@ bool Esekf::initImu(const SensorData &sensor_data)
   return false;
 }
 
-void Esekf::undistortCloud(const SensorData &sensor_data, Cloud &cloud)
+void Esekf::undistortCloud(const SensorData &sensor_data, CloudPtr &cloud)
 {
-  // add the imu of the last frame-tail to the of current frame-head
-  auto imus = sensor_data.imu;
-  imus.push_front(last_imu_);
-  const double &imu_end_time = imus.back()->header.stamp.toSec();
-  const double &cloud_end_time = sensor_data.stamp;
+  if(imu_pose_.empty())
+    return;
 
-  // sort point clouds by offset time
-  cloud = *(sensor_data.cloud);
+  ROS_ASSERT(sensor_data.cloud != nullptr);
 
-  // Initialize IMU pose
-  imu_pose_.clear();
-  imu_pose_.push_back(IMUPose(0.0, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
-
-  double dt = 0;
-
-  InputU u;
-  for (auto it = imus.begin(); it < (imus.end() - 1); it++)
-  {
-    auto &&head = *(it);
-    auto &&tail = *(it + 1);
-
-    if (tail->header.stamp.toSec() < last_lidar_end_time_)
-      continue;
-
-    Vec3 gyr(0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
-             0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
-             0.5 * (head->angular_velocity.z + tail->angular_velocity.z));
-    Vec3 acc(0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
-             0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
-             0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z));
-
-    if (head->header.stamp.toSec() < last_lidar_end_time_)
-    {
-      dt = tail->header.stamp.toSec() - last_lidar_end_time_;
-    }
-    else
-    {
-      dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
-    }
-
-    u.acc = acc;
-    u.gyr = gyr;
-    predict(dt, Q_, u);
-
-    /* save the poses at each IMU measurements */
-    gyr_last_ = gyr - x_.bg;
-    acc_last_ = x_.rot * (acc - x_.ba);
-
-    acc_last_ += x_.grav;
-
-    double &&offset_time = tail->header.stamp.toSec() - cloud_end_time;
-    imu_pose_.push_back(IMUPose(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
-  }
-
-  // calculated the pos and attitude prediction at the frame-end
-  double sign = cloud_end_time > imu_end_time ? 1.0 : -1.0;
-  dt = sign * (cloud_end_time - imu_end_time);
-  predict(dt, Q_, u);
-
-  last_imu_ = sensor_data.imu.back();
-  last_lidar_end_time_ = cloud_end_time;
+  cloud = sensor_data.cloud;
 
   // undistort each lidar point (backward propagation)
-  if (cloud.points.begin() == cloud.points.end())
+  if (cloud->points.begin() == cloud->points.end())
     return;
-  auto point = cloud.points.end() - 1;
+  auto point = cloud->points.end() - 1;
   for (auto it_kp = imu_pose_.end() - 1; it_kp != imu_pose_.begin(); it_kp--)
   {
     auto head = it_kp - 1;
@@ -228,7 +174,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, Cloud &cloud)
 
     for (; point->time > head->offset_time; point--)
     {
-      dt = point->time - head->offset_time;
+      double dt = point->time - head->offset_time;
 
       // Transform to the 'end' frame, using only the rotation
       Mat3 R_w_curi(R_imu * SO3Expmap(gyr, dt)); // cur to world
@@ -247,18 +193,18 @@ void Esekf::undistortCloud(const SensorData &sensor_data, Cloud &cloud)
       point->y = p_deskew(1);
       point->z = p_deskew(2);
 
-      if (point == cloud.points.begin())
+      if (point == cloud->points.begin())
         break;
     }
   }
 }
 
-void Esekf::propagation(const SensorData &sensor_data, CloudPtr &cloud_deskew)
+void Esekf::predict(const SensorData &sensor_data)
 {
   if (sensor_data.imu.empty())
   {
     return;
-  };
+  }
 
   if (imu_need_init_)
   {
@@ -269,12 +215,70 @@ void Esekf::propagation(const SensorData &sensor_data, CloudPtr &cloud_deskew)
     return;
   }
 
-  ROS_ASSERT(sensor_data.cloud != nullptr);
-  undistortCloud(sensor_data, *cloud_deskew);
+
+  // add the imu of the last frame-tail to the of current frame-head
+  auto imus = sensor_data.imu;
+  imus.push_front(last_imu_);
+  const double &imu_end_time = imus.back()->header.stamp.toSec();
+  const double &cloud_end_time = sensor_data.stamp;
+
+  // Initialize IMU pose
+  imu_pose_.clear();
+  imu_pose_.push_back(IMUPose(0.0, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
+
+  InputU u;
+  for (auto it = imus.begin(); it < (imus.end() - 1); it++)
+  {
+    auto &&head = *(it);
+    auto &&tail = *(it + 1);
+
+    if (tail->header.stamp.toSec() < last_lidar_end_time_)
+      continue;
+
+    Vec3 gyr(0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
+             0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
+             0.5 * (head->angular_velocity.z + tail->angular_velocity.z));
+    Vec3 acc(0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
+             0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
+             0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z));
+
+    double dt = 0;
+
+    if (head->header.stamp.toSec() < last_lidar_end_time_)
+    {
+      dt = tail->header.stamp.toSec() - last_lidar_end_time_;
+    }
+    else
+    {
+      dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
+    }
+
+    u.acc = acc;
+    u.gyr = gyr;
+    propagation(dt, Q_, u);
+
+    /* save the poses at each IMU measurements */
+    gyr_last_ = gyr - x_.bg;
+    acc_last_ = x_.rot * (acc - x_.ba);
+
+    acc_last_ += x_.grav;
+
+    double &&offset_time = tail->header.stamp.toSec() - cloud_end_time;
+    imu_pose_.push_back(IMUPose(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
+  }
+
+  // calculated the pos and attitude prediction at the frame-end
+  double sign = cloud_end_time > imu_end_time ? 1.0 : -1.0;
+  double dt = sign * (cloud_end_time - imu_end_time);
+  propagation(dt, Q_, u);
+
+  last_imu_ = sensor_data.imu.back();
+  last_lidar_end_time_ = cloud_end_time;
+
 }
 
 // Forward Propagation  III-C
-void Esekf::predict(double &dt, MatNN &Q, const InputU &u)
+void Esekf::propagation(double &dt, MatNN &Q, const InputU &u)
 {
   VecS f = f_func(x_, u, dt);                                  // paper (3) f
   MatSS f_x = df_dx_func(x_, u, dt);                           // paper (7) df/dx

@@ -1,28 +1,8 @@
 #include <omp.h>
-#include <mutex>
-#include <math.h>
-#include <thread>
-#include <fstream>
-#include <csignal>
-#include <unistd.h>
 
-#include <ros/ros.h>
-#include <Eigen/Core>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
-#include <visualization_msgs/Marker.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/io/pcd_io.h>
 #include <pcl/common/distances.h>
-
-#include <sensor_msgs/PointCloud2.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <geometry_msgs/Vector3.h>
-#include "preprocess.h"
+#include <pcl/common/transforms.h>
+#include <ros/console.h>
 
 #include "mapping.h"
 
@@ -60,23 +40,6 @@ bool calcPlane(Eigen::Matrix<double, 4, 1> &pca_result, const PointVector &point
   return true;
 }
 
-void pointL2W(PointType const *const pi, PointType *const po, const State &state)
-{
-  Vec3 p_lidar(pi->x, pi->y, pi->z);
-  Vec3 pw(state.rot * (state.Ril * p_lidar + state.til) + state.pos);
-
-  po->x = pw(0);
-  po->y = pw(1);
-  po->z = pw(2);
-  po->intensity = pi->intensity;
-}
-
-template <typename T>
-void pointL2W(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po,  const State &state)
-{
-  po = (state.rot * (state.Ril * pi + state.til) + state.pos);
-}
-
 Mapping::Mapping(bool extrinsic_est, double filter_size_map)
 {
   extrinsic_est_ = extrinsic_est;
@@ -98,12 +61,9 @@ bool Mapping::initMap(const CloudPtr &cloud, const State &state)
     int cloud_size = cloud->points.size();
     if (cloud_size > 5)
     {
-      CloudPtr cloud_world(new Cloud(cloud_size, 1));
+      CloudPtr cloud_world(new Cloud());
       ikdtree_.set_downsample_param(filter_size_map_);
-      for (int i = 0; i < cloud_size; i++)
-      {
-        pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
-      }
+      pcl::transformPointCloud(*cloud, *cloud_world, state.getTwl());
       ikdtree_.Build(cloud_world->points);
       return true;
     }
@@ -213,12 +173,12 @@ void Mapping::updateMap(CloudPtr cloud, const State &state)
   PointVector new_points_ds;
   int cloud_size = cloud->points.size();
 
-  CloudPtr cloud_world(new Cloud(cloud_size, 1));
+  CloudPtr cloud_world(new Cloud());
+
+  pcl::transformPointCloud(*cloud, *cloud_world, state.getTwl());
 
   for (int i = 0; i < cloud_size; i++)
   {
-    /* transform to world frame */
-    pointL2W(&(cloud->points[i]), &(cloud_world->points[i]), state);
     /* decide if need add to map */
     if (!neighbor_array_[i].empty())
     {
@@ -229,7 +189,7 @@ void Mapping::updateMap(CloudPtr cloud, const State &state)
       mid_point.x = floor(cloud_world->points[i].x / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
       mid_point.y = floor(cloud_world->points[i].y / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
       mid_point.z = floor(cloud_world->points[i].z / filter_size_map_) * filter_size_map_ + 0.5 * filter_size_map_;
-      float dist = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
+      float dist2 = pcl::squaredEuclideanDistance(cloud_world->points[i], mid_point);
       if (fabs(neighbors[0].x - mid_point.x) > 0.5 * filter_size_map_ && fabs(neighbors[0].y - mid_point.y) > 0.5 * filter_size_map_ && fabs(neighbors[0].z - mid_point.z) > 0.5 * filter_size_map_)
       {
         new_points_ds.push_back(cloud_world->points[i]);
@@ -237,7 +197,7 @@ void Mapping::updateMap(CloudPtr cloud, const State &state)
       }
       for (int j = 0; j < neighbors.size(); j++)
       {
-        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist)
+        if (pcl::squaredEuclideanDistance(neighbors[j], mid_point) < dist2)
         {
           need_add = false;
           break;
