@@ -149,10 +149,12 @@ bool Esekf::initImu(const SensorData &sensor_data)
   return false;
 }
 
-void Esekf::undistortCloud(const SensorData &sensor_data, CloudPtr &cloud)
+CloudPtr Esekf::undistortCloud(const SensorData &sensor_data)
 {
+  CloudPtr cloud(new Cloud());
+
   if(imu_pose_.empty())
-    return;
+    return cloud;
 
   ROS_ASSERT(sensor_data.cloud != nullptr);
 
@@ -160,7 +162,8 @@ void Esekf::undistortCloud(const SensorData &sensor_data, CloudPtr &cloud)
 
   // undistort each lidar point (backward propagation)
   if (cloud->points.begin() == cloud->points.end())
-    return;
+    return cloud;
+    
   auto point = cloud->points.end() - 1;
   for (auto it_kp = imu_pose_.end() - 1; it_kp != imu_pose_.begin(); it_kp--)
   {
@@ -197,6 +200,7 @@ void Esekf::undistortCloud(const SensorData &sensor_data, CloudPtr &cloud)
         break;
     }
   }
+  return cloud;
 }
 
 void Esekf::predict(const SensorData &sensor_data)

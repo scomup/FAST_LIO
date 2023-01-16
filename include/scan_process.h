@@ -3,6 +3,7 @@
 #include <sensor_msgs/PointCloud2.h>
 
 #include "common.h"
+#include <pcl/filters/voxel_grid.h>
 
 
 namespace velodyne_ros
@@ -24,14 +25,19 @@ class ScanProcess
 public:
   //   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  ScanProcess(double blind, int point_filter_num);
+  ScanProcess(double blind, int point_filter_num, double filter_size_surf_min);
   ~ScanProcess();
 
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, CloudPtr &pcl_out);
 
+  CloudPtr downsample(const CloudPtr &cloud);
+
+
   Cloud cloud_; // cloud in lidar frame.
   int point_filter_num_;
   double blind2_;
+
+  pcl::VoxelGrid<PointType> downsampe_filter_;
 
 private:
   void velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);

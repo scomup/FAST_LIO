@@ -1,5 +1,3 @@
-#define PCL_NO_PRECOMPILE
-
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_broadcaster.h>
 #include "lidar_odom_ros.h"
@@ -39,18 +37,18 @@ LidarOdomROS::LidarOdomROS()
   nh_.param<int>("max_iteration", max_iteration, 4);
   nh_.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
   nh_.param<double>("filter_size_map", filter_size_map, 0.5);
-  nh_.param<double>("mapping_/gyr_cov", gyr_cov, 0.1);
-  nh_.param<double>("mapping_/acc_cov", acc_cov, 0.1);
-  nh_.param<double>("mapping_/b_gyr_cov", b_gyr_cov, 0.0001);
-  nh_.param<double>("mapping_/b_acc_cov", b_acc_cov, 0.0001);
+  nh_.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
+  nh_.param<double>("mapping/acc_cov", acc_cov, 0.1);
+  nh_.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
+  nh_.param<double>("mapping/b_acc_cov", b_acc_cov, 0.0001);
   nh_.param<double>("blind", blind, 2);
   nh_.param<int>("point_filter_num", point_filter_num, 2);
-  nh_.param<bool>("mapping_/extrinsic_est_en", extrinsic_est, false);
-  nh_.param<std::vector<double>>("mapping_/extrinsic_T", extrin_trans, std::vector<double>());
-  nh_.param<std::vector<double>>("mapping_/extrinsic_R", extrin_rot, std::vector<double>());
+  nh_.param<bool>("mapping/extrinsic_est_en", extrinsic_est, false);
+  nh_.param<std::vector<double>>("mapping/extrinsic_T", extrin_trans, std::vector<double>());
+  nh_.param<std::vector<double>>("mapping/extrinsic_R", extrin_rot, std::vector<double>());
 
 
-  scan_process_ = boost::make_shared<ScanProcess>(blind, point_filter_num);;
+  scan_process_ = boost::make_shared<ScanProcess>(blind, point_filter_num, filter_size_surf_min);;
   mapping_ = boost::make_shared<Mapping>(extrinsic_est, filter_size_map);
   auto h_model = [this](HData &ekfom_data,
                             State &x,
@@ -58,8 +56,6 @@ LidarOdomROS::LidarOdomROS()
     {bool vaild = this->mapping_->point2PlaneModel(ekfom_data, x, cloud); return vaild;};
 
   kf_ = boost::make_shared<Esekf>(0.001, max_iteration, h_model);
-
-  downsampe_filter_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 
   Vec3 til;
   Mat3 Ril;
@@ -85,13 +81,13 @@ void LidarOdomROS::cloudCB(const sensor_msgs::PointCloud2::ConstPtr &msg)
   if (msg->header.stamp.toSec() < last_timestamp_lidar_)
   {
     ROS_ERROR("lidar loop back, clear buffer");
-    lidar_q_.clear();
+    scan_q_.clear();
   }
 
   CloudPtr ptr(new Cloud());
   scan_process_->process(msg, ptr);
   std::lock_guard<std::mutex> lock(mtx_);
-  lidar_q_.push_back({ptr,msg->header.stamp.toSec()});
+  scan_q_.push_back({ptr,msg->header.stamp.toSec()});
   last_timestamp_lidar_ = msg->header.stamp.toSec();
   
 }
@@ -119,13 +115,13 @@ bool LidarOdomROS::getSensorData(SensorData &sensor_data)
 {
   std::lock_guard<std::mutex> lock(mtx_);
 
-  if (lidar_q_.empty() || imu_q_.empty())
+  if (scan_q_.empty() || imu_q_.empty())
   {
     return false;
   }
 
   // add lidar
-  auto &cloud_info = lidar_q_.front();
+  auto &cloud_info = scan_q_.front();
   sensor_data.cloud = cloud_info.cloud;
   sensor_data.stamp = cloud_info.stamp + cloud_info.cloud->points.back().time;
   lidar_end_time_ = sensor_data.stamp;
@@ -147,7 +143,7 @@ bool LidarOdomROS::getSensorData(SensorData &sensor_data)
     imu_q_.pop_front();
   }
 
-  lidar_q_.pop_front();
+  scan_q_.pop_front();
   return true;
 }
 
@@ -157,18 +153,10 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
 
   if (getSensorData(sensor_data))
   {
-    if (flg_first_scan_)
-    {
-
-      flg_first_scan_ = false;
-      return;
-    }
-    CloudPtr cloud_deskew(new Cloud());
-
     // imu forward propagation, and deskew lidar points. 
     kf_->predict(sensor_data); 
 
-    kf_->undistortCloud(sensor_data, cloud_deskew); 
+    CloudPtr cloud_deskew = kf_->undistortCloud(sensor_data); 
 
     /*
     CloudPtr cloud_deskew_cmp(new Cloud());
@@ -190,27 +178,20 @@ void LidarOdomROS::runCB(const ros::TimerEvent &e)
       return;
     }
 
-    // Segment the map in lidar FOV
-    //state_ = kf_->getState();
-    // Vec3 pose_lidar = state_.pos + state_.rot * state_.til; // Lidar point in global frame.
-    // updateMapArea(pose_lidar);
+    // updateMapArea(pose);
 
     // downsample the feature points in a scan
-    CloudPtr cloud_ds(new Cloud());
-    downsampe_filter_.setInputCloud(cloud_deskew);
-    downsampe_filter_.filter(*cloud_ds);
 
-    if (mapping_->initMap(cloud_ds, kf_->getState()))
+    auto cloud_ds = scan_process_->downsample(cloud_deskew);
+
+    if (cloud_ds->points.size() < 5)
     {
+      ROS_WARN("No point, skip this scan!\n");
       return;
     }
 
-    int cloud_size = cloud_ds->points.size();
-
-    //  ICP and iterated Kalman filter update
-    if (cloud_size < 5)
+    if (mapping_->initMap(cloud_ds, kf_->getState()))
     {
-      ROS_WARN("No point, skip this scan!\n");
       return;
     }
 

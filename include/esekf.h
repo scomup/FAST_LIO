@@ -38,7 +38,7 @@ public:
 
   void predict(const SensorData &sensor_data);
 
-  void undistortCloud(const SensorData &sensor_data, CloudPtr &pcl_in_out);
+  CloudPtr undistortCloud(const SensorData &sensor_data);
 
 private:
   VecS f_func(const State &state, const InputU &u, double dt) const;

@@ -4,12 +4,22 @@
 
 const bool time_cmp(PointType &x, PointType &y) { return (x.time < y.time); };
 
-
-ScanProcess::ScanProcess(double blind, int point_filter_num)
+ScanProcess::ScanProcess(double blind, int point_filter_num, double filter_size_surf_min)
     : blind2_(blind * blind),
-      point_filter_num_(point_filter_num){}
-      
+      point_filter_num_(point_filter_num)
+{
+  downsampe_filter_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+}
+
 ScanProcess::~ScanProcess() {}
+
+CloudPtr ScanProcess::downsample(const CloudPtr &cloud)
+{
+  CloudPtr cloud_ds(new Cloud());
+  downsampe_filter_.setInputCloud(cloud);
+  downsampe_filter_.filter(*cloud_ds);
+  return cloud_ds;
+}
 
 void ScanProcess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, CloudPtr &cloud_out)
 {
