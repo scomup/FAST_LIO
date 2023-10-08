@@ -68,8 +68,8 @@ LidarOdomROS::LidarOdomROS()
   kf_->setAccBiasCov(Vec3(b_acc_cov, b_acc_cov, b_acc_cov));
 
   // ROS subscribe initialization
-  sub_pcl_ = nh_.subscribe("/velodyne_points", 200000, &LidarOdomROS::cloudCB, this);
-  sub_imu_ = nh_.subscribe("/imu/data", 200000, &LidarOdomROS::imuCB, this);
+  sub_pcl_ = nh_.subscribe("/os1_cloud_node/points", 200000, &LidarOdomROS::cloudCB, this);
+  sub_imu_ = nh_.subscribe("/os1_cloud_node/imu", 200000, &LidarOdomROS::imuCB, this);
   pub_cloud_ = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
   // ros::Publisher pub_cloud2 = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_cmp", 100000);
   pub_odom_ = nh_.advertise<nav_msgs::Odometry>("/Odometry", 100000);

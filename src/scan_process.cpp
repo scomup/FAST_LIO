@@ -31,32 +31,31 @@ void ScanProcess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, CloudPt
 
 void ScanProcess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
-  cloud_.clear();
+  CloudPtr cloud(new Cloud());
 
-  pcl::PointCloud<velodyne_ros::Point> cloud_orig;
+  pcl::PointCloud<OusterPoint> cloud_orig;
   pcl::fromROSMsg(*msg, cloud_orig);
+  // printf("base_stamp %f\n", base_stamp);
   int plsize = cloud_orig.points.size();
   if (plsize == 0)
-    return;
-
+    cloud_ = *cloud;
   for (int i = 0; i < plsize; i++)
   {
-
-    if (i % point_filter_num_ == 0)
+    if ((i / 64) % 8 == 0)
     {
-
       PointType added_pt;
       added_pt.x = cloud_orig.points[i].x;
       added_pt.y = cloud_orig.points[i].y;
       added_pt.z = cloud_orig.points[i].z;
       added_pt.intensity = cloud_orig.points[i].intensity;
-      added_pt.time = cloud_orig.points[i].time;
-      
-      if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind2_))
-      {
-        cloud_.points.push_back(added_pt); 
-      }
+      added_pt.time = cloud_orig.points[i].t * 1e-9;
+
+      const double dist2 = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
+      if (dist2 < 0 || dist2 > 200*200)
+        continue;
+      cloud->points.push_back(added_pt);
     }
   }
-  std::sort(cloud_.points.begin(), cloud_.points.end(), time_cmp);
+  std::sort(cloud->points.begin(), cloud->points.end(), time_cmp);
+  cloud_ = *cloud;
 }
