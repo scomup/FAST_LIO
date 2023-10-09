@@ -50,12 +50,12 @@ void ScanProcess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       added_pt.y = cloud_orig.points[i].y;
       added_pt.z = cloud_orig.points[i].z;
       added_pt.intensity = cloud_orig.points[i].intensity;
-      added_pt.time = cloud_orig.points[i].time;
-      
-      if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind2_))
-      {
-        cloud_.points.push_back(added_pt); 
-      }
+      added_pt.time = cloud_orig.points[i].time * 1000.;
+
+      const double dist2 = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
+      if (dist2 > blind2_)
+        continue;
+      cloud_.points.push_back(added_pt);
     }
   }
   std::sort(cloud_.points.begin(), cloud_.points.end(), time_cmp);

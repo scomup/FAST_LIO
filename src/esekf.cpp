@@ -175,9 +175,9 @@ CloudPtr Esekf::undistortCloud(const SensorData &sensor_data)
     Vec3 &acc_imu = head->acc;
     Vec3 &gyr = tail->gyr;
 
-    for (; point->time > head->offset_time; point--)
+    for (; point->time / double(1000) > head->offset_time; point--)
     {
-      double dt = point->time - head->offset_time;
+      double dt = point->time / double(1000) - head->offset_time;
 
       // Transform to the 'end' frame, using only the rotation
       Mat3 R_w_curi(R_imu * SO3Expmap(gyr, dt)); // cur to world
@@ -225,6 +225,7 @@ void Esekf::predict(const SensorData &sensor_data)
   imus.push_front(last_imu_);
   const double &imu_end_time = imus.back()->header.stamp.toSec();
   const double &cloud_end_time = sensor_data.stamp;
+  const double cloud_begin_time = sensor_data.stamp - sensor_data.cloud->points.back().time / (double)1000;
 
   // Initialize IMU pose
   imu_pose_.clear();
@@ -267,7 +268,7 @@ void Esekf::predict(const SensorData &sensor_data)
 
     acc_last_ += x_.grav;
 
-    double &&offset_time = tail->header.stamp.toSec() - cloud_end_time;
+    double &&offset_time = tail->header.stamp.toSec() - cloud_begin_time;
     imu_pose_.push_back(IMUPose(offset_time, acc_last_, gyr_last_, x_.vel, x_.pos, x_.rot));
   }
 
