@@ -123,7 +123,7 @@ bool LidarOdomROS::getSensorData(SensorData &sensor_data)
   // add lidar
   auto &cloud_info = scan_q_.front();
   sensor_data.cloud = cloud_info.cloud;
-  sensor_data.stamp = cloud_info.stamp + cloud_info.cloud->points.back().time;
+  sensor_data.stamp = cloud_info.stamp + cloud_info.cloud->points.back().time / (double)1000;
   lidar_end_time_ = sensor_data.stamp;
 
   if (newest_imu_stamp_ < lidar_end_time_)

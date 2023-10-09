@@ -48,7 +48,7 @@ void ScanProcess::velodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       added_pt.y = cloud_orig.points[i].y;
       added_pt.z = cloud_orig.points[i].z;
       added_pt.intensity = cloud_orig.points[i].intensity;
-      added_pt.time = cloud_orig.points[i].t * 1e-9;
+      added_pt.time = cloud_orig.points[i].t * 1e-6;
 
       const double dist2 = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
       if (dist2 < 0 || dist2 > 200*200)
