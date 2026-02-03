@@ -278,6 +278,7 @@ void lasermap_fov_segment()
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) 
 {
+    // printf("add lidar\n");
     mtx_buffer.lock();
     scan_count ++;
     double preprocess_start_time = omp_get_wtime();
@@ -377,7 +378,6 @@ bool sync_packages(MeasureGroup &meas)
         meas.lidar = lidar_buffer.front();
         meas.lidar_beg_time = time_buffer.front();
 
-
         if (meas.lidar->points.size() <= 1) // time too little
         {
             lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
@@ -400,7 +400,6 @@ bool sync_packages(MeasureGroup &meas)
 
         lidar_pushed = true;
     }
-
     if (last_timestamp_imu < lidar_end_time)
     {
         return false;

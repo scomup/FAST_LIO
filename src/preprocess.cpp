@@ -81,6 +81,9 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
   case MARSIM:
     sim_handler(msg);
     break;
+  case MID360:
+    mid_handler(msg);
+    break;
   
   default:
     printf("Error LiDAR Type");
@@ -185,6 +188,50 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     }
   }
 }
+
+void Preprocess::mid_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+  pcl::PointCloud<LivoxPoint> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  int plsize = pl_orig.size();
+  pl_corn.reserve(plsize);
+  pl_surf.reserve(plsize);
+
+  {
+    double time_stamp = msg->header.stamp.toSec();
+    double base_stamp = msg->header.stamp.toSec() * 1000.;  // ms
+    // cout << "===================================" << endl;
+    // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
+    for (int i = 0; i < pl_orig.points.size(); i++)
+    {
+      if (i % point_filter_num != 0) continue;
+
+      double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
+      
+      if (range < (blind * blind)) continue;
+      
+      Eigen::Vector3d pt_vec;
+      PointType added_pt;
+      added_pt.x = pl_orig.points[i].x;
+      added_pt.y = pl_orig.points[i].y;
+      added_pt.z = pl_orig.points[i].z;
+      added_pt.intensity = pl_orig.points[i].intensity;
+      added_pt.normal_x = 0;
+      added_pt.normal_y = 0;
+      added_pt.normal_z = 0;
+      added_pt.curvature = pl_orig.points[i].timestamp * 1e-6 - base_stamp; // curvature unit: ms
+
+      pl_surf.points.push_back(added_pt);
+    }
+  }
+  // pub_func(pl_surf, pub_full, msg->header.stamp);
+  // pub_func(pl_surf, pub_corn, msg->header.stamp);
+}
+
+
 
 void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
