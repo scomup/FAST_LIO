@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(fast_lio)
 
+add_definitions(-DPCL_NO_PRECOMPILE)
+
 SET(CMAKE_BUILD_TYPE "Debug")
 
 ADD_COMPILE_OPTIONS(-std=c++14 )
@@ -39,9 +41,6 @@ find_package(OpenMP QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 
-find_package(PythonLibs REQUIRED)
-find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
-
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
@@ -51,7 +50,6 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  livox_ros_driver
   message_generation
   eigen_conversions
 )
@@ -68,11 +66,6 @@ include_directories(
   ${PYTHON_INCLUDE_DIRS}
   include)
 
-add_message_files(
-  FILES
-  Pose6D.msg
-)
-
 generate_messages(
  DEPENDENCIES
  geometry_msgs
@@ -84,6 +77,14 @@ catkin_package(
   INCLUDE_DIRS
 )
 
-add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+add_executable(fastlio_mapping 
+  src/main.cpp 
+  src/mapping.cpp
+  src/esekf.cpp 
+  src/ikd_Tree.cpp 
+  src/scan_process.cpp
+  src/lidar_odom_ros.cpp
+  )
+  
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
